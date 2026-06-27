@@ -1,0 +1,97 @@
+/* Design Tokens and Theme Configurations */
+:root {
+  /* Common Variables */
+  --font-primary: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-display: 'Outfit', sans-serif;
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  
+  /* HSL Base Palettes */
+  --h-primary: 220; /* Blue / Indigo */
+  --h-accent: 38;   /* Amber / Gold */
+  
+  /* Status Colors (Same for both themes, slightly tuned) */
+  --success: #10b981;
+  --success-bg: rgba(16, 185, 129, 0.1);
+  --error: #ef4444;
+  --error-bg: rgba(239, 68, 68, 0.1);
+  --warning: #f59e0b;
+  --warning-bg: rgba(245, 158, 11, 0.1);
+  --info: #0ea5e9;
+  --info-bg: rgba(14, 165, 233, 0.1);
+}
+
+/* Light Theme Variables */
+:root[theme="light"] {
+  --primary: hsl(var(--h-primary), 80%, 45%);
+  --primary-hover: hsl(var(--h-primary), 80%, 38%);
+  --primary-light: hsl(var(--h-primary), 90%, 95%);
+  --accent: hsl(var(--h-accent), 95%, 45%);
+  --accent-hover: hsl(var(--h-accent), 95%, 38%);
+  
+  --bg-app: #f1f5f9;
+  --bg-sidebar: #1e293b;
+  --bg-panel: #ffffff;
+  --bg-input: #f8fafc;
+  --bg-input-focus: #ffffff;
+  
+  --border-color: #e2e8f0;
+  --border-focus: hsl(var(--h-primary), 70%, 65%);
+  
+  --text-main: #0f172a;
+  --text-muted: #64748b;
+  --text-light: #94a3b8;
+  --text-on-primary: #ffffff;
+  --text-on-sidebar: #f8fafc;
+  --text-on-sidebar-muted: #94a3b8;
+  
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.08);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  --shadow-primary: 0 4px 14px 0 rgba(30, 58, 138, 0.3);
+  
+  --glass-bg: rgba(255, 255, 255, 0.8);
+  --glass-border: rgba(255, 255, 255, 0.6);
+  --glass-blur: 12px;
+}
+
+/* Dark Theme Variables */
+:root[theme="dark"] {
+  --primary: #3b82f6;
+  --primary-hover: #60a5fa;
+  --primary-light: rgba(59, 130, 246, 0.15);
+  --accent: #f59e0b;
+  --accent-hover: #fbbf24;
+  
+  --bg-app: #0b0f19;
+  --bg-sidebar: #0f172a;
+  --bg-panel: #1e293b;
+  --bg-input: #0f172a;
+  --bg-input-focus: #111827;
+  
+  --border-color: #334155;
+  --border-focus: #60a5fa;
+  
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --text-light: #64748b;
+  --text-on-primary: #0f172a;
+  --text-on-sidebar: #f8fafc;
+  --text-on-sidebar-muted: #64748b;
+  
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -2px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -4px rgba(0, 0, 0, 0.4);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+  --shadow-primary: 0 4px 14px 0 rgba(59, 130, 246, 0.4);
+  
+  --glass-bg: rgba(30, 41, 59, 0.7);
+  --glass-border: rgba(51, 65, 85, 0.5);
+  --glass-blur: 16px;
+}

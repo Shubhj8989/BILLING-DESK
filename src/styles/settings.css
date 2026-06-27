@@ -1,0 +1,84 @@
+/* Settings Page Styles */
+.settings-container {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 24px;
+}
+
+@media (max-width: 900px) {
+  .settings-container {
+    grid-template-columns: 1fr;
+  }
+}
+
+.logo-upload-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 30px 20px;
+  cursor: pointer;
+  background-color: var(--bg-input);
+  transition: all var(--transition-fast);
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  height: 200px;
+}
+
+.logo-upload-wrapper:hover {
+  border-color: var(--primary);
+  background-color: var(--bg-panel);
+}
+
+.logo-preview-img {
+  max-width: 100%;
+  max-height: 140px;
+  border-radius: var(--radius-sm);
+  object-fit: contain;
+}
+
+.logo-upload-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-muted);
+}
+
+.logo-upload-placeholder span {
+  font-size: 24px;
+}
+
+.logo-upload-input {
+  display: none;
+}
+
+.btn-remove-logo {
+  margin-top: 10px;
+  color: var(--error);
+  background: none;
+  border: none;
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.btn-remove-logo:hover {
+  text-decoration: underline;
+}
+
+/* Database Controls */
+.db-actions-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.db-action-btn-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}

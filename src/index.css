@@ -1,0 +1,9 @@
+@import './styles/variables.css';
+@import './styles/main.css';
+@import './styles/dashboard.css';
+@import './styles/billing.css';
+@import './styles/products.css';
+@import './styles/records.css';
+@import './styles/reports.css';
+@import './styles/settings.css';
+@import './styles/print.css';

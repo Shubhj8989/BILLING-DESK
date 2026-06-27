@@ -1,0 +1,131 @@
+/* Dashboard Page Styles */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+}
+
+@media (max-width: 1200px) {
+  .dashboard-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.metric-card {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  position: relative;
+  overflow: hidden;
+}
+
+.metric-card::before {
+  content: '';
+  position: absolute;
+  top: -20px;
+  right: -20px;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: var(--primary-light);
+  opacity: 0.2;
+}
+
+.metric-icon {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.icon-sales { background-color: var(--primary-light); color: var(--primary); }
+.icon-month { background-color: var(--info-bg); color: var(--info); }
+.icon-collection { background-color: var(--success-bg); color: var(--success); }
+.icon-invoices { background-color: var(--warning-bg); color: var(--warning); }
+
+.metric-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.metric-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.metric-value {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+/* Quick Actions */
+.quick-actions-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.quick-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.action-btn-card {
+  background-color: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  text-align: center;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  transition: all var(--transition-normal);
+  color: var(--text-main);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.action-btn-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--primary);
+  box-shadow: var(--shadow-md);
+}
+
+.action-btn-icon {
+  font-size: 28px;
+  margin-bottom: 4px;
+}
+
+/* Dashboard Lower Panels */
+.dashboard-details-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 24px;
+}
+
+@media (max-width: 1024px) {
+  .dashboard-details-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.recent-invoices-card {
+  min-height: 300px;
+}
