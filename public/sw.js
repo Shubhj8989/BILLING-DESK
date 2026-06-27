@@ -1,4 +1,4 @@
-const CACHE_NAME = 'vardhman-billing-v10';
+const CACHE_NAME = 'vardhman-billing-v12';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -44,6 +44,22 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(event.request.url);
   if (!url.protocol.startsWith('http')) return;
+
+  // NETWORK FIRST for document navigation / index.html to avoid stale chunk cache traps
+  if (event.request.mode === 'navigate' || url.pathname === '/' || url.pathname.endsWith('/index.html')) {
+    event.respondWith(
+      fetch(event.request).then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200) {
+          const responseToCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseToCache));
+        }
+        return networkResponse;
+      }).catch(() => {
+        return caches.match('/index.html');
+      })
+    );
+    return;
+  }
 
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {

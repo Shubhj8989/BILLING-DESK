@@ -79,7 +79,7 @@ export default function Records({ activeInvoice, setActiveInvoice, onEditInvoice
               <th>Mobile</th>
               <th>State Supply</th>
               <th>Payment Mode</th>
-              <th style={{ textAlign: 'right', paddingRight: '20px' }}>Grand Total (₹)</th>
+              <th style={{ textAlign: 'right', paddingRight: '20px' }}>Grand Total (Rs.)</th>
             </tr>
           </thead>
           <tbody>
@@ -111,7 +111,7 @@ export default function Records({ activeInvoice, setActiveInvoice, onEditInvoice
                     </span>
                   </td>
                   <td style={{ textAlign: 'right', fontWeight: '700', paddingRight: '20px' }}>
-                    ₹{inv.grandTotal.toFixed(2)}
+                    Rs. {inv.grandTotal.toFixed(2)}
                   </td>
                 </tr>
               ))
@@ -249,7 +249,7 @@ export default function Records({ activeInvoice, setActiveInvoice, onEditInvoice
                         <td style={{ borderLeft: '1px solid #000', borderRight: '1px solid #000', textAlign: 'right', padding: '2px' }}>{item.rate.toFixed(2)}</td>
                         <td style={{ borderLeft: '1px solid #000', borderRight: '1px solid #000', textAlign: 'center', padding: '2px' }}>{item.unit}</td>
                         <td style={{ borderLeft: '1px solid #000', borderRight: '1px solid #000', textAlign: 'center', padding: '2px' }}>
-                          {item.discount > 0 ? (item.discountType === 'amount' ? '₹' + item.discount : item.discount + '%') : ''}
+                          {item.discount > 0 ? (item.discountType === 'amount' ? 'Rs.' + item.discount : item.discount + '%') : ''}
                         </td>
                         <td style={{ borderLeft: '1px solid #000', borderRight: '1px solid #000', textAlign: 'right', padding: '2px', fontWeight: 'bold' }}>{item.taxableAmount.toFixed(2)}</td>
                       </tr>
@@ -341,7 +341,7 @@ export default function Records({ activeInvoice, setActiveInvoice, onEditInvoice
                       <td style={{ border: '1px solid #000' }}></td>
                       <td style={{ border: '1px solid #000' }}></td>
                       <td style={{ border: '1px solid #000' }}></td>
-                      <td style={{ border: '1px solid #000', padding: '4px', textAlign: 'right' }}>₹{activeInvoice.grandTotal.toFixed(2)}</td>
+                      <td style={{ border: '1px solid #000', padding: '4px', textAlign: 'right' }}>Rs.{activeInvoice.grandTotal.toFixed(2)}</td>
                     </tr>
                   </tbody>
                 </table>

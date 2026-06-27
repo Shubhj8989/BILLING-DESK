@@ -70,10 +70,10 @@ export default function Dashboard({ onViewInvoice, setActivePage }) {
       <div className="dashboard-grid">
         {/* Card 1 */}
         <div className="card metric-card">
-          <div className="metric-icon icon-sales">₹</div>
+          <div className="metric-icon icon-sales">Rs</div>
           <div className="metric-info">
             <span className="metric-title">Today's Sales</span>
-            <span className="metric-value">₹{stats.todaySales.toFixed(2)}</span>
+            <span className="metric-value">Rs. {stats.todaySales.toFixed(2)}</span>
           </div>
         </div>
         {/* Card 2 */}
@@ -81,7 +81,7 @@ export default function Dashboard({ onViewInvoice, setActivePage }) {
           <div className="metric-icon icon-month">📅</div>
           <div className="metric-info">
             <span className="metric-title">Monthly Sales</span>
-            <span className="metric-value">₹{stats.monthSales.toFixed(2)}</span>
+            <span className="metric-value">Rs. {stats.monthSales.toFixed(2)}</span>
           </div>
         </div>
         {/* Card 3 */}
@@ -89,7 +89,7 @@ export default function Dashboard({ onViewInvoice, setActivePage }) {
           <div className="metric-icon icon-collection">💼</div>
           <div className="metric-info">
             <span className="metric-title">Total Collection</span>
-            <span className="metric-value">₹{stats.totalCollection.toFixed(2)}</span>
+            <span className="metric-value">Rs. {stats.totalCollection.toFixed(2)}</span>
           </div>
         </div>
         {/* Card 4 */}
@@ -212,7 +212,7 @@ export default function Dashboard({ onViewInvoice, setActivePage }) {
                       </span>
                     </td>
                     <td style={{ textAlign: 'right', fontWeight: '600', paddingRight: '16px' }}>
-                      ₹{inv.grandTotal.toFixed(2)}
+                      Rs. {inv.grandTotal.toFixed(2)}
                     </td>
                   </tr>
                 ))

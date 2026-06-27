@@ -165,7 +165,7 @@ class PrintModule {
                   <td style="border-left: 1px solid #000; border-right: 1px solid #000; padding: 4px; text-align: center; font-weight: bold;">${item.qty} ${item.unit}</td>
                   <td style="border-left: 1px solid #000; border-right: 1px solid #000; padding: 4px; text-align: right;">${item.rate.toFixed(2)}</td>
                   <td style="border-left: 1px solid #000; border-right: 1px solid #000; padding: 4px; text-align: center;">${item.unit}</td>
-                  <td style="border-left: 1px solid #000; border-right: 1px solid #000; padding: 4px; text-align: center;">${item.discount > 0 ? (item.discountType === 'amount' ? '₹' + item.discount : item.discount + '%') : ''}</td>
+                  <td style="border-left: 1px solid #000; border-right: 1px solid #000; padding: 4px; text-align: center;">${item.discount > 0 ? (item.discountType === 'amount' ? 'Rs.' + item.discount : item.discount + '%') : ''}</td>
                   <td style="border-left: 1px solid #000; border-right: 1px solid #000; padding: 4px; text-align: right; font-weight: bold;">${item.taxableAmount.toFixed(2)}</td>
                 </tr>
               `;
@@ -270,7 +270,7 @@ class PrintModule {
               <td style="border: 1px solid #000; padding: 5px;">&nbsp;</td>
               <td style="border: 1px solid #000; padding: 5px;">&nbsp;</td>
               <td style="border: 1px solid #000; padding: 5px;">&nbsp;</td>
-              <td style="border: 1px solid #000; padding: 5px; text-align: right; font-size: 11px; font-weight: 700;">₹ ${invoice.grandTotal.toFixed(2)}</td>
+              <td style="border: 1px solid #000; padding: 5px; text-align: right; font-size: 11px; font-weight: 700;">Rs. ${invoice.grandTotal.toFixed(2)}</td>
             </tr>
           </tbody>
         </table>

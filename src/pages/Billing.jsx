@@ -669,11 +669,11 @@ export default function Billing({ editingInvoice, onInvoiceSaved, setActivePage 
               <th className="col-hsn">HSN</th>
               <th className="col-qty">Qty *</th>
               <th className="col-unit">Unit</th>
-              <th className="col-rate">Rate (₹) *</th>
+              <th className="col-rate">Rate (Rs.) *</th>
               <th className="col-discount">Discount</th>
               <th className="col-gst">GST %</th>
-              <th className="col-taxable">Taxable (₹)</th>
-              <th className="col-total">Total (₹)</th>
+              <th className="col-taxable">Taxable (Rs.)</th>
+              <th className="col-total">Total (Rs.)</th>
             </tr>
           </thead>
           <tbody>
@@ -734,7 +734,7 @@ export default function Billing({ editingInvoice, onInvoiceSaved, setActivePage 
                     style={{ width: '40px', height: '28px', padding: '2px', fontSize: '11px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-input)', color: 'var(--text-main)' }}
                   >
                     <option value="percent">%</option>
-                    <option value="amount">₹</option>
+                    <option value="amount">Rs.</option>
                   </select>
                 </td>
                 <td className="col-gst">
@@ -763,7 +763,7 @@ export default function Billing({ editingInvoice, onInvoiceSaved, setActivePage 
           <h3 style={{ margin: '0 0 12px 0', fontSize: '13px', fontWeight: '700' }}>🚚 Additional Charges / Freight Out</h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '16px' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-light)' }}>Freight Charges (₹)</label>
+              <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-light)' }}>Freight Charges (Rs.)</label>
               <input
                 type="number"
                 className="form-control"
@@ -791,7 +791,7 @@ export default function Billing({ editingInvoice, onInvoiceSaved, setActivePage 
 
           <h3 style={{ margin: '16px 0 12px 0', fontSize: '13px', fontWeight: '700', borderTop: '1px solid var(--border-color)', paddingTop: '12px' }}>🎁 Extra Invoice-Level Cash Discount</h3>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-light)' }}>Less: Extra Cash Discount Amount (₹)</label>
+            <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-light)' }}>Less: Extra Cash Discount Amount (Rs.)</label>
             <input
               type="number"
               className="form-control"
@@ -807,37 +807,37 @@ export default function Billing({ editingInvoice, onInvoiceSaved, setActivePage 
         <div className="card totals-card">
           <div className="total-row">
             <span>Subtotal (Taxable Value):</span>
-            <span style={{ fontWeight: '500' }}>₹{totals.subtotal.toFixed(2)}</span>
+            <span style={{ fontWeight: '500' }}>Rs. {totals.subtotal.toFixed(2)}</span>
           </div>
           <div className="total-row">
             <span>Item Discounts Total:</span>
-            <span style={{ color: 'var(--error)', fontWeight: '500' }}>-₹{totals.discountTotal.toFixed(2)}</span>
+            <span style={{ color: 'var(--error)', fontWeight: '500' }}>-Rs. {totals.discountTotal.toFixed(2)}</span>
           </div>
           {totals.isLocal ? (
             <>
               <div className="total-row">
                 <span>Central Tax (CGST):</span>
-                <span>₹{totals.cgstTotal.toFixed(2)}</span>
+                <span>Rs. {totals.cgstTotal.toFixed(2)}</span>
               </div>
               <div className="total-row">
                 <span>State Tax (SGST):</span>
-                <span>₹{totals.sgstTotal.toFixed(2)}</span>
+                <span>Rs. {totals.sgstTotal.toFixed(2)}</span>
               </div>
             </>
           ) : (
             <div className="total-row">
               <span>Integrated Tax (IGST):</span>
-              <span>₹{totals.igstTotal.toFixed(2)}</span>
+              <span>Rs. {totals.igstTotal.toFixed(2)}</span>
             </div>
           )}
           <div className="total-row">
             <span>Round Off:</span>
-            <span>{totals.roundOff >= 0 ? '+' : ''}₹{totals.roundOff.toFixed(2)}</span>
+            <span>{totals.roundOff >= 0 ? '+' : ''}Rs. {totals.roundOff.toFixed(2)}</span>
           </div>
 
           <div className="total-row grand-total">
             <span>Grand Total:</span>
-            <span className="val-amount">₹{totals.grandTotal.toFixed(2)}</span>
+            <span className="val-amount">Rs. {totals.grandTotal.toFixed(2)}</span>
           </div>
 
           <div className="words-panel" style={{ marginTop: '12px' }}>

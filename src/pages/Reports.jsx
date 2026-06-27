@@ -54,9 +54,9 @@ export default function Reports() {
       const txCount = invoices.length;
       const avg = txCount > 0 ? grandRevenue / txCount : 0;
       setSummary({
-        v1: `₹${grandRevenue.toFixed(2)}`, label1: 'Gross Revenue',
+        v1: `Rs. ${grandRevenue.toFixed(2)}`, label1: 'Gross Revenue',
         v2: String(txCount), label2: 'Total Transactions',
-        v3: `₹${avg.toFixed(2)}`, label3: 'Avg. Invoice Value'
+        v3: `Rs. ${avg.toFixed(2)}`, label3: 'Avg. Invoice Value'
       });
 
     } else if (reportType === 'monthly') {
@@ -82,9 +82,9 @@ export default function Reports() {
       const totalMonths = list.length;
       const avg = totalMonths > 0 ? grandTotal / totalMonths : 0;
       setSummary({
-        v1: `₹${grandTotal.toFixed(2)}`, label1: 'Gross Sales',
+        v1: `Rs. ${grandTotal.toFixed(2)}`, label1: 'Gross Sales',
         v2: String(totalMonths), label2: 'Total Months',
-        v3: `₹${avg.toFixed(2)}`, label3: 'Avg Monthly Revenue'
+        v3: `Rs. ${avg.toFixed(2)}`, label3: 'Avg Monthly Revenue'
       });
 
     } else if (reportType === 'customer') {
@@ -113,8 +113,8 @@ export default function Reports() {
       const avg = totalCustomers > 0 ? grandRevenue / totalCustomers : 0;
       setSummary({
         v1: String(totalCustomers), label1: 'Active Customers',
-        v2: `₹${grandRevenue.toFixed(2)}`, label2: 'Total Client Billing',
-        v3: `₹${avg.toFixed(2)}`, label3: 'Avg. Client Spend'
+        v2: `Rs. ${grandRevenue.toFixed(2)}`, label2: 'Total Client Billing',
+        v3: `Rs. ${avg.toFixed(2)}`, label3: 'Avg. Client Spend'
       });
 
     } else if (reportType === 'product') {
@@ -148,7 +148,7 @@ export default function Reports() {
       setSummary({
         v1: String(list.length), label1: 'Unique Products Sold',
         v2: String(totalQty), label2: 'Total Quantity Sold',
-        v3: `₹${grandRevenue.toFixed(2)}`, label3: 'Furniture Gross Revenue'
+        v3: `Rs. ${grandRevenue.toFixed(2)}`, label3: 'Furniture Gross Revenue'
       });
 
     } else if (reportType === 'gst') {
@@ -180,9 +180,9 @@ export default function Reports() {
 
       setReportData(list);
       setSummary({
-        v1: `₹${totalTaxable.toFixed(2)}`, label1: 'Total Taxable Val',
-        v2: `₹${totalCgst.toFixed(2)}`, label2: 'CGST Sum',
-        v3: `₹${totalSgst.toFixed(2)}`, label3: 'SGST Sum'
+        v1: `Rs. ${totalTaxable.toFixed(2)}`, label1: 'Total Taxable Val',
+        v2: `Rs. ${totalCgst.toFixed(2)}`, label2: 'CGST Sum',
+        v3: `Rs. ${totalSgst.toFixed(2)}`, label3: 'SGST Sum'
       });
     }
 
@@ -316,14 +316,14 @@ export default function Reports() {
               <tr>
                 <th style={{ padding: '12px 8px' }}>Date</th>
                 <th style={{ textAlign: 'center' }}>Invoices Count</th>
-                <th style={{ textAlign: 'right', paddingRight: '24px' }}>Total Sales (₹)</th>
+                <th style={{ textAlign: 'right', paddingRight: '24px' }}>Total Sales (Rs.)</th>
               </tr>
             )}
             {reportType === 'monthly' && (
               <tr>
                 <th style={{ padding: '12px 8px' }}>Month</th>
                 <th style={{ textAlign: 'center' }}>Invoices Count</th>
-                <th style={{ textAlign: 'right', paddingRight: '24px' }}>Total Sales (₹)</th>
+                <th style={{ textAlign: 'right', paddingRight: '24px' }}>Total Sales (Rs.)</th>
               </tr>
             )}
             {reportType === 'customer' && (
@@ -331,7 +331,7 @@ export default function Reports() {
                 <th style={{ padding: '12px 8px' }}>Customer Name</th>
                 <th>Mobile</th>
                 <th style={{ textAlign: 'center' }}>Total Invoices</th>
-                <th style={{ textAlign: 'right', paddingRight: '24px' }}>Total Purchases (₹)</th>
+                <th style={{ textAlign: 'right', paddingRight: '24px' }}>Total Purchases (Rs.)</th>
               </tr>
             )}
             {reportType === 'product' && (
@@ -339,7 +339,7 @@ export default function Reports() {
                 <th style={{ padding: '12px 8px' }}>Product Name</th>
                 <th>Barcode</th>
                 <th style={{ textAlign: 'center' }}>Quantity Sold</th>
-                <th style={{ textAlign: 'right', paddingRight: '24px' }}>Revenue Generated (₹)</th>
+                <th style={{ textAlign: 'right', paddingRight: '24px' }}>Revenue Generated (Rs.)</th>
               </tr>
             )}
             {reportType === 'gst' && (
@@ -347,11 +347,11 @@ export default function Reports() {
                 <th style={{ padding: '12px 8px' }}>Invoice Number</th>
                 <th>Date</th>
                 <th>Customer Name / GSTIN</th>
-                <th style={{ textAlign: 'right' }}>Taxable Amt (₹)</th>
-                <th style={{ textAlign: 'right' }}>CGST (₹)</th>
-                <th style={{ textAlign: 'right' }}>SGST (₹)</th>
-                <th style={{ textAlign: 'right' }}>Total Tax (₹)</th>
-                <th style={{ textAlign: 'right', paddingRight: '24px' }}>Total (₹)</th>
+                <th style={{ textAlign: 'right' }}>Taxable Amt (Rs.)</th>
+                <th style={{ textAlign: 'right' }}>CGST (Rs.)</th>
+                <th style={{ textAlign: 'right' }}>SGST (Rs.)</th>
+                <th style={{ textAlign: 'right' }}>Total Tax (Rs.)</th>
+                <th style={{ textAlign: 'right', paddingRight: '24px' }}>Total (Rs.)</th>
               </tr>
             )}
           </thead>
@@ -369,7 +369,7 @@ export default function Reports() {
                     <tr key={index}>
                       <td style={{ padding: '12px 8px' }}><strong>{new Date(row.date).toLocaleDateString('en-GB')}</strong></td>
                       <td style={{ textAlign: 'center' }}>{row.count}</td>
-                      <td style={{ textAlign: 'right', fontWeight: '600', color: 'var(--primary)', paddingRight: '24px' }}>₹{row.revenue.toFixed(2)}</td>
+                      <td style={{ textAlign: 'right', fontWeight: '600', color: 'var(--primary)', paddingRight: '24px' }}>Rs. {row.revenue.toFixed(2)}</td>
                     </tr>
                   );
                 } else if (reportType === 'monthly') {
@@ -380,7 +380,7 @@ export default function Reports() {
                     <tr key={index}>
                       <td style={{ padding: '12px 8px' }}><strong>{formattedMonth}</strong></td>
                       <td style={{ textAlign: 'center' }}>{row.count}</td>
-                      <td style={{ textAlign: 'right', fontWeight: '600', color: 'var(--primary)', paddingRight: '24px' }}>₹{row.revenue.toFixed(2)}</td>
+                      <td style={{ textAlign: 'right', fontWeight: '600', color: 'var(--primary)', paddingRight: '24px' }}>Rs. {row.revenue.toFixed(2)}</td>
                     </tr>
                   );
                 } else if (reportType === 'customer') {
@@ -389,7 +389,7 @@ export default function Reports() {
                       <td style={{ padding: '12px 8px', fontWeight: '600', textAlign: 'left' }}>{row.name}</td>
                       <td>{row.mobile}</td>
                       <td style={{ textAlign: 'center' }}>{row.count}</td>
-                      <td style={{ textAlign: 'right', fontWeight: '600', color: 'var(--primary)', paddingRight: '24px' }}>₹{row.revenue.toFixed(2)}</td>
+                      <td style={{ textAlign: 'right', fontWeight: '600', color: 'var(--primary)', paddingRight: '24px' }}>Rs. {row.revenue.toFixed(2)}</td>
                     </tr>
                   );
                 } else if (reportType === 'product') {
@@ -398,7 +398,7 @@ export default function Reports() {
                       <td style={{ padding: '12px 8px', fontWeight: '600', textAlign: 'left' }}>{row.name}</td>
                       <td><code>{row.barcode}</code></td>
                       <td style={{ textAlign: 'center' }}>{row.qty} {row.unit}</td>
-                      <td style={{ textAlign: 'right', fontWeight: '600', color: 'var(--primary)', paddingRight: '24px' }}>₹{row.revenue.toFixed(2)}</td>
+                      <td style={{ textAlign: 'right', fontWeight: '600', color: 'var(--primary)', paddingRight: '24px' }}>Rs. {row.revenue.toFixed(2)}</td>
                     </tr>
                   );
                 } else if (reportType === 'gst') {
@@ -410,11 +410,11 @@ export default function Reports() {
                         <div style={{ fontWeight: '600' }}>{row.customerName}</div>
                         <div style={{ fontSize: '11px', color: 'var(--text-light)' }}>GSTIN: {row.gstin}</div>
                       </td>
-                      <td style={{ textAlign: 'right' }}>₹{row.taxable.toFixed(2)}</td>
-                      <td style={{ textAlign: 'right' }}>₹{row.cgst.toFixed(2)}</td>
-                      <td style={{ textAlign: 'right' }}>₹{row.sgst.toFixed(2)}</td>
-                      <td style={{ textAlign: 'right', color: 'var(--warning)', fontWeight: '500' }}>₹{row.totalGst.toFixed(2)}</td>
-                      <td style={{ textAlign: 'right', fontStyle: 'normal', fontWeight: '600', color: 'var(--primary)', paddingRight: '24px' }}>₹{row.grandTotal.toFixed(2)}</td>
+                      <td style={{ textAlign: 'right' }}>Rs. {row.taxable.toFixed(2)}</td>
+                      <td style={{ textAlign: 'right' }}>Rs. {row.cgst.toFixed(2)}</td>
+                      <td style={{ textAlign: 'right' }}>Rs. {row.sgst.toFixed(2)}</td>
+                      <td style={{ textAlign: 'right', color: 'var(--warning)', fontWeight: '500' }}>Rs. {row.totalGst.toFixed(2)}</td>
+                      <td style={{ textAlign: 'right', fontStyle: 'normal', fontWeight: '600', color: 'var(--primary)', paddingRight: '24px' }}>Rs. {row.grandTotal.toFixed(2)}</td>
                     </tr>
                   );
                 }

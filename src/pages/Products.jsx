@@ -147,7 +147,7 @@ export default function Products() {
               <th>Product Name</th>
               <th>HSN/SAC</th>
               <th>Unit</th>
-              <th>Rate (₹)</th>
+              <th>Rate (Rs.)</th>
               <th>Default Disc %</th>
               <th>GST %</th>
               <th>Stock</th>
@@ -168,7 +168,7 @@ export default function Products() {
                   <td style={{ textAlign: 'left', fontWeight: '600' }}>{p.name}</td>
                   <td>{p.hsn || '-'}</td>
                   <td>{p.unit}</td>
-                  <td>₹{p.rate.toFixed(2)}</td>
+                  <td>Rs. {p.rate.toFixed(2)}</td>
                   <td>{p.discount || 0}%</td>
                   <td>{p.gst}%</td>
                   <td style={{ fontWeight: '600', color: p.stock <= 5 ? 'var(--error)' : 'inherit' }}>{p.stock}</td>
@@ -262,7 +262,7 @@ export default function Products() {
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-light)' }}>Rate (₹) *</label>
+                    <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-light)' }}>Rate (Rs.) *</label>
                     <input
                       type="number"
                       step="any"
