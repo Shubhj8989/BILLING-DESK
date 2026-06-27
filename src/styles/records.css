@@ -62,13 +62,13 @@
   border-color: var(--error);
 }
 
-/* Custom invoice preview modal styling */
 .invoice-view-container {
   display: flex;
   flex-direction: column;
   gap: 20px;
   max-height: 80vh;
   overflow-y: auto;
+  overflow-x: auto;
   padding: 4px;
 }
 
@@ -81,4 +81,5 @@
   font-family: 'Inter', monospace, sans-serif;
   line-height: 1.4;
   box-shadow: var(--shadow-sm);
+  min-width: 750px;
 }

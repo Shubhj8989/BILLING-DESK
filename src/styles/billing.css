@@ -66,6 +66,7 @@
 
 .billing-table {
   width: 100%;
+  min-width: 1200px;
   border-collapse: collapse;
   font-size: 13px;
 }
@@ -242,4 +243,22 @@
   height: 6px;
   background-color: var(--info);
   border-radius: 50%;
+}
+
+/* --- ADDITIONAL RESPONSIVENESS SLABS --- */
+@media (max-width: 600px) {
+  .barcode-scan-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .barcode-scan-bar input {
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .billing-action-buttons {
+    grid-template-columns: 1fr;
+  }
 }

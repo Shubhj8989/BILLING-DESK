@@ -4,6 +4,8 @@
   gap: 10px;
   border-bottom: 2px solid var(--border-color);
   padding-bottom: 1px;
+  overflow-x: auto;
+  white-space: nowrap;
 }
 
 .report-tab-btn {
@@ -17,6 +19,7 @@
   color: var(--text-muted);
   cursor: pointer;
   transition: all var(--transition-fast);
+  flex-shrink: 0;
 }
 
 .report-tab-btn:hover {
@@ -70,4 +73,12 @@
   justify-content: space-between;
   align-items: center;
   gap: 16px;
+}
+
+@media (max-width: 600px) {
+  .report-actions-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
 }

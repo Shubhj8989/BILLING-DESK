@@ -69,3 +69,14 @@
   background-color: var(--success-bg);
   color: var(--success);
 }
+
+/* --- ADDITIONAL PRODUCTS SLABS --- */
+@media (max-width: 600px) {
+  .products-header-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .search-input-wrapper {
+    max-width: 100%;
+  }
+}
