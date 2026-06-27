@@ -539,16 +539,16 @@ class PrintModule {
       doc.rect(5, 58, 200, 7, 'S');
 
       doc.text('Sl.', 7, 63);
-      doc.text('Product Name', 16, 63);
-      doc.text('HSN', 82, 63);
-      doc.text('Rate', 100, 63);
-      doc.text('Qty', 118, 63);
-      doc.text('Gross', 130, 63);
-      doc.text('Disc', 148, 63);
-      doc.text('Taxable', 158, 63);
-      doc.text('GST%', 176, 63);
-      doc.text('GST Amt', 186, 63);
-      doc.text('Total', 198, 63, { align: 'right' });
+      doc.text('Product Name', 12, 63);
+      doc.text('HSN', 70, 63);
+      doc.text('Rate', 83, 63);
+      doc.text('Qty', 98, 63);
+      doc.text('Gross', 110, 63);
+      doc.text('Disc', 126, 63);
+      doc.text('Taxable', 137, 63);
+      doc.text('GST%', 155, 63);
+      doc.text('GST Amt', 166, 63);
+      doc.text('Total', 200, 63, { align: 'right' });
 
       // Draw item rows
       let y = 65;
@@ -558,20 +558,20 @@ class PrintModule {
       invoice.items.forEach((item, index) => {
         y += 6;
         let displayName = item.name;
-        if (displayName.length > 32) displayName = displayName.substring(0, 30) + '..';
+        if (displayName.length > 28) displayName = displayName.substring(0, 26) + '..';
 
         doc.text(String(index + 1), 7, y);
-        doc.text(displayName, 16, y);
-        doc.text(item.hsn || '-', 82, y);
-        doc.text(item.rate.toFixed(2), 100, y);
-        doc.text(`${item.qty} ${item.unit || 'PCS'}`, 118, y);
-        doc.text((item.qty * item.rate).toFixed(2), 130, y);
-        const discText = item.discount > 0 ? (item.discountType === 'amount' ? `₹${item.discount}` : `${item.discount}%`) : '-';
-        doc.text(discText, 148, y);
-        doc.text(item.taxableAmount.toFixed(2), 158, y);
-        doc.text(`${item.gst}%`, 176, y);
-        doc.text(((item.cgst || 0) + (item.sgst || 0)).toFixed(2), 186, y);
-        doc.text(item.total.toFixed(2), 198, y, { align: 'right' });
+        doc.text(displayName, 12, y);
+        doc.text(item.hsn || '-', 70, y);
+        doc.text(item.rate.toFixed(2), 83, y);
+        doc.text(`${item.qty} ${item.unit || 'PCS'}`, 98, y);
+        doc.text((item.qty * item.rate).toFixed(2), 110, y);
+        const discText = item.discount > 0 ? (item.discountType === 'amount' ? `Rs.${item.discount}` : `${item.discount}%`) : '-';
+        doc.text(discText, 126, y);
+        doc.text(item.taxableAmount.toFixed(2), 137, y);
+        doc.text(`${item.gst}%`, 155, y);
+        doc.text(((item.cgst || 0) + (item.sgst || 0)).toFixed(2), 166, y);
+        doc.text(item.total.toFixed(2), 200, y, { align: 'right' });
 
         // Row dividers
         doc.setDrawColor(220, 220, 220);
@@ -596,16 +596,16 @@ class PrintModule {
       doc.setFont('Helvetica', 'normal');
       doc.setFontSize(8);
       doc.text(`Subtotal:`, 140, subY);
-      doc.text(`₹${(invoice.subtotal || 0).toFixed(2)}`, 198, subY, { align: 'right' });
+      doc.text(`Rs.${(invoice.subtotal || 0).toFixed(2)}`, 198, subY, { align: 'right' });
 
       subY += 4;
       doc.text(`Discount:`, 140, subY);
-      doc.text(`₹${(invoice.discountTotal || 0).toFixed(2)}`, 198, subY, { align: 'right' });
+      doc.text(`Rs.${(invoice.discountTotal || 0).toFixed(2)}`, 198, subY, { align: 'right' });
 
       if (invoice.freight > 0) {
         subY += 4;
         doc.text(`Freight Out:`, 140, subY);
-        doc.text(`₹${(invoice.freight || 0).toFixed(2)}`, 198, subY, { align: 'right' });
+        doc.text(`Rs.${(invoice.freight || 0).toFixed(2)}`, 198, subY, { align: 'right' });
       }
 
       const isLocal = invoice.isLocal !== undefined ? invoice.isLocal : (invoice.customerState === 'Uttar Pradesh' || !invoice.customerState);
@@ -613,75 +613,77 @@ class PrintModule {
       if (isLocal) {
         subY += 4;
         doc.text(`CGST:`, 140, subY);
-        doc.text(`₹${(invoice.cgstTotal || 0).toFixed(2)}`, 198, subY, { align: 'right' });
+        doc.text(`Rs.${(invoice.cgstTotal || 0).toFixed(2)}`, 198, subY, { align: 'right' });
 
         subY += 4;
         doc.text(`SGST:`, 140, subY);
-        doc.text(`₹${(invoice.sgstTotal || 0).toFixed(2)}`, 198, subY, { align: 'right' });
+        doc.text(`Rs.${(invoice.sgstTotal || 0).toFixed(2)}`, 198, subY, { align: 'right' });
       } else {
         const igstVal = invoice.igstTotal !== undefined ? invoice.igstTotal : ((invoice.cgstTotal || 0) + (invoice.sgstTotal || 0));
         subY += 4;
         doc.text(`IGST:`, 140, subY);
-        doc.text(`₹${(igstVal || 0).toFixed(2)}`, 198, subY, { align: 'right' });
+        doc.text(`Rs.${(igstVal || 0).toFixed(2)}`, 198, subY, { align: 'right' });
       }
 
       if (invoice.extraDiscount > 0) {
         subY += 4;
         doc.text(`Extra Discount:`, 140, subY);
-        doc.text(`-₹${invoice.extraDiscount.toFixed(2)}`, 198, subY, { align: 'right' });
+        doc.text(`-Rs.${invoice.extraDiscount.toFixed(2)}`, 198, subY, { align: 'right' });
       }
 
       subY += 4;
       doc.text(`Round Off:`, 140, subY);
       const rOff = invoice.roundOff || 0;
-      doc.text(`${rOff >= 0 ? '+' : ''}₹${rOff.toFixed(2)}`, 198, subY, { align: 'right' });
+      doc.text(`${rOff >= 0 ? '+' : ''}Rs.${rOff.toFixed(2)}`, 198, subY, { align: 'right' });
 
       subY += 5;
       doc.setFont('Helvetica', 'bold');
       doc.setFontSize(10);
       doc.text(`GRAND TOTAL:`, 140, subY);
-      doc.text(`₹${(invoice.grandTotal || 0).toFixed(2)}`, 198, subY, { align: 'right' });
+      doc.text(`Rs.${(invoice.grandTotal || 0).toFixed(2)}`, 198, subY, { align: 'right' });
 
-      y = subY + 8;
+      y = subY + 6;
       doc.line(5, y, 205, y); // Divider
 
-      // Terms & Signature
-      y += 5;
+      // Terms & Signature Grid
+      y += 4;
       doc.setFont('Helvetica', 'bold');
-      doc.setFontSize(8.5);
+      doc.setFontSize(8);
       doc.text('Terms & Conditions:', 10, y);
       doc.setFont('Helvetica', 'normal');
-      doc.setFontSize(7);
+      doc.setFontSize(6.5);
       
       const terms = invoice.termsAndConditions || '';
-      const termLines = doc.splitTextToSize(terms, 105);
-      doc.text(termLines, 10, y + 4);
+      const termLines = doc.splitTextToSize(terms, 90);
+      doc.text(termLines, 10, y + 3.5);
 
-      // Bank account particulars
+      // Bank account particulars (Left side, lower)
       if (shop.bankAccount) {
-        const bankY = y + 25;
+        const bankY = y + 16;
         doc.setFont('Helvetica', 'bold');
-        doc.setFontSize(8);
-        doc.text('Bank Account Details:', 10, bankY);
-        doc.setFont('Helvetica', 'normal');
         doc.setFontSize(7.5);
-        doc.text(`Account No: ${shop.bankAccount}`, 10, bankY + 4);
-        doc.text(`IFSC Code: ${shop.bankIfsc}`, 10, bankY + 8);
-        doc.text(`Proprietor: ${shop.proprietor}`, 10, bankY + 12);
+        doc.text('Bank Account Details for Payment (UPI/NEFT):', 10, bankY);
+        doc.setFont('Helvetica', 'normal');
+        doc.setFontSize(7);
+        doc.text(`A/C Number: ${shop.bankAccount}  |  IFSC Code: ${shop.bankIfsc}`, 10, bankY + 3.5);
+        doc.text(`Proprietor: ${shop.proprietor || ''}  |  UPI ID: 9907879457@hdfc`, 10, bankY + 7);
       }
 
+      // Right Side: Signatory Box
       doc.setFont('Helvetica', 'normal');
-      doc.setFontSize(8);
-      doc.text(`For ${shop.shopName || 'Vardhman Furniture House'}`, 140, y + 2);
+      doc.setFontSize(7.5);
+      doc.text(`For ${shop.shopName || 'Vardhman Furniture House'}`, 140, y);
       if (shop.proprietor) {
         doc.setFont('Helvetica', 'bold');
-        doc.text(shop.proprietor, 140, y + 13);
+        doc.setFontSize(8);
+        doc.text(shop.proprietor, 140, y + 18);
         doc.setFont('Helvetica', 'normal');
+        doc.setFontSize(7.5);
       }
-      doc.line(140, y + 15, 195, y + 15);
-      doc.text('Proprietor / Auth. Signatory', 142, y + 19);
+      doc.line(140, y + 20, 195, y + 20);
+      doc.text('Proprietor / Auth. Signatory', 140, y + 23.5);
 
-      // Render barcode image dynamically onto the PDF canvas
+      // Render barcode image dynamically onto the PDF canvas (Left side, bottom)
       const barcodeCanvas = document.createElement('canvas');
       JsBarcode(barcodeCanvas, invoice.invoiceNumber, {
         format: "CODE128",
@@ -690,9 +692,9 @@ class PrintModule {
         displayValue: false
       });
       const barcodeImgData = barcodeCanvas.toDataURL("image/png");
-      doc.addImage(barcodeImgData, 'PNG', 10, y + 22, 50, 10);
-      doc.setFontSize(7);
-      doc.text(invoice.invoiceNumber, 22, y + 35);
+      doc.addImage(barcodeImgData, 'PNG', 10, y + 22, 45, 7);
+      doc.setFontSize(6.5);
+      doc.text(`Invoice Ref: ${invoice.invoiceNumber}`, 18, y + 31.5);
 
       // Try to load static QR Code and add to PDF, otherwise save immediately
       const qrImg = new Image();
@@ -707,8 +709,8 @@ class PrintModule {
           
           doc.setFontSize(7.5);
           doc.setFont('Helvetica', 'bold');
-          doc.text('Scan to Pay QR', 110, y + 21);
-          doc.addImage(qrDataUrl, 'JPEG', 110, y + 23, 23, 23);
+          doc.text('Scan to Pay QR', 110, y + 12);
+          doc.addImage(qrDataUrl, 'JPEG', 110, y + 14, 20, 20);
         } catch (e) {
           console.warn('Failed to embed static QR image in PDF:', e);
         }
