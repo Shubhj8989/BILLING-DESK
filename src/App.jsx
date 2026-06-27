@@ -181,7 +181,7 @@ export default function App() {
         
         {/* Header toolbar */}
         <header id="header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-panel)' }}>
-          <div className="header-title-section" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div className="header-title-section" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '12px' }}>
             <button
               className="hamburger-btn"
               onClick={() => setIsSidebarOpen(prev => !prev)}
