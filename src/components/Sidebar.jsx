@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function Sidebar({ activePage, setActivePage, onLogout }) {
+export default function Sidebar({ activePage, setActivePage, onLogout, isOpen }) {
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: '📊' },
     { id: 'billing', label: 'Create Invoice', icon: '🧾' },
@@ -11,7 +11,7 @@ export default function Sidebar({ activePage, setActivePage, onLogout }) {
   ];
 
   return (
-    <aside id="sidebar">
+    <aside id="sidebar" className={isOpen ? 'open' : ''}>
       <div class="sidebar-header">
         <div class="sidebar-logo">
           <img src="/assets/default-logo.svg" alt="logo" style={{ width: '100%', height: '100%' }} />

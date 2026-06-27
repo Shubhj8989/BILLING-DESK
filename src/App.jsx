@@ -23,6 +23,7 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [shopConfig, setShopConfig] = useState({});
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   
   // History & Editing States
   const [activeInvoice, setActiveInvoice] = useState(null);
@@ -145,14 +146,34 @@ export default function App() {
   return (
     <div style={{ display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden' }}>
       
+      {/* Mobile Sidebar Overlay Backdrop */}
+      {isSidebarOpen && (
+        <div 
+          className="sidebar-backdrop" 
+          onClick={() => setIsSidebarOpen(false)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(15, 23, 42, 0.4)',
+            backdropFilter: 'blur(2px)',
+            zIndex: 999
+          }}
+        ></div>
+      )}
+
       {/* Sidebar navigation */}
       <Sidebar 
         activePage={activePage} 
         setActivePage={(page) => {
           if (page === 'billing') setEditingInvoice(null);
           setActivePage(page);
+          setIsSidebarOpen(false);
         }}
         onLogout={handleLogout}
+        isOpen={isSidebarOpen}
       />
 
       {/* Main page desk */}
@@ -160,12 +181,33 @@ export default function App() {
         
         {/* Header toolbar */}
         <header id="header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-panel)' }}>
-          <div className="header-title-section">
-            <div className="header-title" style={{ fontSize: '18px', fontWeight: '800', fontFamily: 'var(--font-display)', color: 'var(--text-main)' }}>
-              {shopConfig.shopName || 'My Furniture House'}
-            </div>
-            <div className="header-subtitle" style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
-              {shopConfig.address || 'Local Sandbox Mode'} {shopConfig.gstNumber ? `| GST: ${shopConfig.gstNumber}` : ''}
+          <div className="header-title-section" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <button
+              className="hamburger-btn"
+              onClick={() => setIsSidebarOpen(prev => !prev)}
+              style={{
+                display: 'none',
+                background: 'none',
+                border: '1px solid var(--border-color)',
+                borderRadius: 'var(--radius-sm)',
+                width: '36px',
+                height: '36px',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                fontSize: '18px',
+                color: 'var(--text-main)'
+              }}
+            >
+              ☰
+            </button>
+            <div>
+              <div className="header-title" style={{ fontSize: '18px', fontWeight: '800', fontFamily: 'var(--font-display)', color: 'var(--text-main)' }}>
+                {shopConfig.shopName || 'My Furniture House'}
+              </div>
+              <div className="header-subtitle" style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                {shopConfig.address || 'Local Sandbox Mode'} {shopConfig.gstNumber ? `| GST: ${shopConfig.gstNumber}` : ''}
+              </div>
             </div>
           </div>
           
