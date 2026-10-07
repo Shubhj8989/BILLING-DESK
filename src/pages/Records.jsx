@@ -1,19 +1,126 @@
 import React, { useState, useEffect } from 'react';
-import dbInstance from '../db/syncService';
+import * as XLSX from 'xlsx';
+import syncService from '../db/syncService';
 import printModule from '../utils/print';
+import { getAmountPaid, getBalanceDue, getPaymentStatus, formatDate, formatINR, getTodayDateStr } from '../utils/invoice';
 
-export default function Records({ activeInvoice, setActiveInvoice, onEditInvoice, setActivePage }) {
+const STATUS_COLORS = {
+  Paid: { bg: 'var(--success-bg)', fg: 'var(--success)' },
+  Partial: { bg: 'var(--warning-bg)', fg: 'var(--warning)' },
+  Unpaid: { bg: 'var(--error-bg)', fg: 'var(--error)' }
+};
+
+export function StatusBadge({ invoice }) {
+  const status = getPaymentStatus(invoice);
+  const c = STATUS_COLORS[status];
+  return (
+    <span className="shop-status-badge" style={{ backgroundColor: c.bg, color: c.fg, padding: '2px 8px', fontSize: '10px', borderRadius: '4px', fontWeight: 600 }}>
+      {status}
+    </span>
+  );
+}
+
+function PaymentModal({ invoice, onClose, onSaved }) {
+  const due = getBalanceDue(invoice);
+  const [amount, setAmount] = useState(String(due));
+  const [mode, setMode] = useState('Cash');
+  const [date, setDate] = useState(getTodayDateStr());
+  const [saving, setSaving] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    const value = parseFloat(amount);
+    if (Number.isNaN(value) || value <= 0) {
+      window.Toast.error('Enter a payment amount greater than zero.');
+      return;
+    }
+    if (value > due + 0.001) {
+      window.Toast.error(`Payment cannot exceed the balance due (${formatINR(due)}).`);
+      return;
+    }
+    setSaving(true);
+    try {
+      const previousPaid = getAmountPaid(invoice);
+      const history = invoice.payments?.length
+        ? invoice.payments
+        : (previousPaid > 0 ? [{ date: invoice.date, amount: previousPaid, mode: invoice.paymentMode }] : []);
+      const updated = {
+        ...invoice,
+        amountPaid: Math.round((previousPaid + value) * 100) / 100,
+        payments: [...history, { date, amount: value, mode }]
+      };
+      await syncService.updateInvoicePayment(updated);
+      window.Toast.success(`Payment of ${formatINR(value)} recorded.`);
+      onSaved(updated);
+    } catch (err) {
+      console.error('Payment save failed:', err);
+      window.Toast.error('Failed to record payment.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="dialog-overlay active" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 10001 }}>
+      <div className="dialog-box" style={{ width: '380px', maxWidth: '95vw', transform: 'scale(1)', opacity: 1 }}>
+        <div className="dialog-header">
+          <h3>Record Payment · {invoice.invoiceNumber}</h3>
+          <button className="dialog-close-btn" onClick={onClose}>&times;</button>
+        </div>
+        <form onSubmit={submit}>
+          <div className="dialog-body" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+              Total {formatINR(invoice.grandTotal)} · Paid {formatINR(getAmountPaid(invoice))} · <strong style={{ color: 'var(--error)' }}>Due {formatINR(due)}</strong>
+            </div>
+            <label className="form-field-label">Amount (Rs.)
+              <input type="number" step="any" min="0" className="form-control" value={amount} onChange={(e) => setAmount(e.target.value)} autoFocus required />
+            </label>
+            <label className="form-field-label">Payment Mode
+              <select className="form-control" value={mode} onChange={(e) => setMode(e.target.value)}>
+                <option>Cash</option>
+                <option>UPI</option>
+                <option>Card</option>
+                <option>Bank Transfer</option>
+                <option>Cheque</option>
+              </select>
+            </label>
+            <label className="form-field-label">Date
+              <input type="date" className="form-control" value={date} onChange={(e) => setDate(e.target.value)} required />
+            </label>
+            {invoice.payments?.length > 0 && (
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                <strong>Previous payments:</strong>
+                {invoice.payments.map((p, i) => (
+                  <div key={i}>{formatDate(p.date)} · {p.mode} · {formatINR(p.amount)}</div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="dialog-footer">
+            <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Save Payment'}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+export default function Records({ activeInvoice, setActiveInvoice, onEditInvoice, onDuplicateInvoice, canDelete }) {
   const [invoices, setInvoices] = useState([]);
-  const [filteredInvoices, setFilteredInvoices] = useState([]);
   const [search, setSearch] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [modeFilter, setModeFilter] = useState('all');
+  const [paymentInvoice, setPaymentInvoice] = useState(null);
 
   const loadInvoices = async () => {
     try {
-      const list = await dbInstance.getInvoices();
-      setInvoices(list);
-      setFilteredInvoices(list);
+      setInvoices(await syncService.getInvoices());
     } catch (err) {
       console.error('Failed to load history:', err);
+      window.Toast.error('Failed to load invoices.');
     }
   };
 
@@ -21,25 +128,29 @@ export default function Records({ activeInvoice, setActiveInvoice, onEditInvoice
     loadInvoices();
   }, [activeInvoice]);
 
-  useEffect(() => {
-    if (!search.trim()) {
-      setFilteredInvoices(invoices);
-      return;
-    }
-    const q = search.toLowerCase();
-    const matches = invoices.filter(inv =>
-      inv.invoiceNumber.toLowerCase().includes(q) ||
-      inv.customerName.toLowerCase().includes(q) ||
-      (inv.customerMobile && inv.customerMobile.includes(q))
-    );
-    setFilteredInvoices(matches);
-  }, [search, invoices]);
+  const q = search.trim().toLowerCase();
+  const filteredInvoices = invoices.filter(inv => {
+    if (q && !(
+      (inv.invoiceNumber || '').toLowerCase().includes(q) ||
+      (inv.customerName || '').toLowerCase().includes(q) ||
+      (inv.customerMobile || '').includes(q)
+    )) return false;
+    if (fromDate && inv.date < fromDate) return false;
+    if (toDate && inv.date > toDate) return false;
+    if (modeFilter !== 'all' && inv.paymentMode !== modeFilter) return false;
+    if (statusFilter === 'due' && getBalanceDue(inv) <= 0) return false;
+    if (statusFilter === 'paid' && getBalanceDue(inv) > 0) return false;
+    return true;
+  });
+
+  const filteredTotal = filteredInvoices.reduce((sum, inv) => sum + (inv.grandTotal || 0), 0);
+  const filteredDue = filteredInvoices.reduce((sum, inv) => sum + getBalanceDue(inv), 0);
 
   const handleDeleteInvoice = async (invoice) => {
-    const confirm = await window.Dialog.confirm(`Warning: Are you sure you want to permanently delete Invoice ${invoice.invoiceNumber}?`, 'Delete Saved Invoice', 'btn-danger');
+    const confirm = await window.Dialog.confirm(`Permanently delete Invoice ${invoice.invoiceNumber}? Billed quantities will be added back to stock.`, 'Delete Saved Invoice', 'btn-danger');
     if (confirm) {
       try {
-        await dbInstance.deleteInvoice(invoice.id);
+        await syncService.deleteInvoice(invoice);
         window.Toast.success('Invoice deleted successfully.');
         setActiveInvoice(null);
         loadInvoices();
@@ -50,22 +161,93 @@ export default function Records({ activeInvoice, setActiveInvoice, onEditInvoice
     }
   };
 
+  const handleShareWhatsApp = (invoice) => {
+    const shopName = invoice.shopConfig?.shopName || 'our shop';
+    const due = getBalanceDue(invoice);
+    const lines = [
+      `Dear ${invoice.customerName},`,
+      `Thank you for shopping at ${shopName}.`,
+      `Invoice: ${invoice.invoiceNumber} dated ${formatDate(invoice.date)}`,
+      `Amount: ${formatINR(invoice.grandTotal)}`,
+      due > 0 ? `Balance due: ${formatINR(due)}` : 'Payment received in full.'
+    ];
+    const digits = (invoice.customerMobile || '').replace(/\D/g, '').slice(-10);
+    const url = `https://wa.me/${digits ? '91' + digits : ''}?text=${encodeURIComponent(lines.join('\n'))}`;
+    window.open(url, '_blank', 'noopener');
+  };
+
+  const handleExport = () => {
+    if (filteredInvoices.length === 0) {
+      window.Toast.warn('No invoices to export.');
+      return;
+    }
+    const rows = filteredInvoices.map(inv => ({
+      'Invoice No.': inv.invoiceNumber,
+      'Date': formatDate(inv.date),
+      'Customer': inv.customerName,
+      'Mobile': inv.customerMobile || '',
+      'GSTIN': inv.customerGstin || '',
+      'Payment Mode': inv.paymentMode,
+      'Taxable (INR)': Number((inv.subtotal || 0).toFixed(2)),
+      'Tax (INR)': Number(((inv.cgstTotal || 0) + (inv.sgstTotal || 0) + (inv.igstTotal || 0)).toFixed(2)),
+      'Grand Total (INR)': inv.grandTotal,
+      'Paid (INR)': getAmountPaid(inv),
+      'Balance Due (INR)': getBalanceDue(inv),
+      'Status': getPaymentStatus(inv)
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Invoices');
+    XLSX.writeFile(wb, `Invoices_${getTodayDateStr()}.xlsx`);
+    window.Toast.success('Invoice list exported.');
+  };
+
+  const clearFilters = () => {
+    setSearch('');
+    setFromDate('');
+    setToDate('');
+    setStatusFilter('all');
+    setModeFilter('all');
+  };
+
   return (
     <div className="records-layout">
-      {/* Search Header Bar */}
-      <div className="table-actions-row" style={{ display: 'flex', gap: '16px', alignItems: 'center', marginBottom: '16px', padding: '12px 24px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
-        <div style={{ fontWeight: '700', fontSize: '14px', whiteSpace: 'nowrap' }}>Search Invoices:</div>
+      {/* Search & Filter Bar */}
+      <div className="table-actions-row records-filter-bar">
         <input
           type="text"
           className="form-control"
-          placeholder="Filter by customer name, mobile, or invoice serial..."
+          placeholder="Search customer, mobile or invoice no…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{ maxWidth: '400px', textAlign: 'left', padding: '8px 12px' }}
+          style={{ flex: '2 1 220px', textAlign: 'left' }}
         />
-        <div style={{ marginLeft: 'auto', fontSize: '12px', color: 'var(--text-muted)' }}>
-          Showing {filteredInvoices.length} of {invoices.length} Invoices
-        </div>
+        <label className="filter-label">From
+          <input type="date" className="form-control" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+        </label>
+        <label className="filter-label">To
+          <input type="date" className="form-control" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+        </label>
+        <select className="form-control" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ flex: '0 1 130px' }}>
+          <option value="all">All status</option>
+          <option value="due">With dues</option>
+          <option value="paid">Fully paid</option>
+        </select>
+        <select className="form-control" value={modeFilter} onChange={(e) => setModeFilter(e.target.value)} style={{ flex: '0 1 130px' }}>
+          <option value="all">All modes</option>
+          <option value="Cash">Cash</option>
+          <option value="UPI">UPI</option>
+          <option value="Card">Card</option>
+          <option value="Bank Transfer">Bank Transfer</option>
+          <option value="Credit">Credit</option>
+        </select>
+        <button className="btn btn-secondary" onClick={clearFilters}>Clear</button>
+        <button className="btn btn-secondary" onClick={handleExport}>📥 Excel</button>
+      </div>
+
+      <div className="records-summary">
+        Showing <strong>{filteredInvoices.length}</strong> of {invoices.length} invoices · Total <strong>{formatINR(filteredTotal)}</strong>
+        {filteredDue > 0 && <> · Outstanding <strong style={{ color: 'var(--error)' }}>{formatINR(filteredDue)}</strong></>}
       </div>
 
       {/* History table */}
@@ -77,15 +259,16 @@ export default function Records({ activeInvoice, setActiveInvoice, onEditInvoice
               <th>Date</th>
               <th>Customer Name</th>
               <th>Mobile</th>
-              <th>State Supply</th>
               <th>Payment Mode</th>
+              <th>Status</th>
+              <th style={{ textAlign: 'right' }}>Balance Due</th>
               <th style={{ textAlign: 'right', paddingRight: '20px' }}>Grand Total (Rs.)</th>
             </tr>
           </thead>
           <tbody>
             {filteredInvoices.length === 0 ? (
               <tr>
-                <td colSpan="7" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '30px' }}>
+                <td colSpan="8" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '30px' }}>
                   No matching invoice records found in storage.
                 </td>
               </tr>
@@ -98,10 +281,9 @@ export default function Records({ activeInvoice, setActiveInvoice, onEditInvoice
                   className="hover-row"
                 >
                   <td style={{ padding: '12px 8px' }}><strong>{inv.invoiceNumber}</strong></td>
-                  <td>{new Date(inv.date).toLocaleDateString('en-GB')} {inv.time}</td>
+                  <td>{formatDate(inv.date)} {inv.time}</td>
                   <td style={{ textAlign: 'left', fontWeight: '600' }}>{inv.customerName}</td>
                   <td>{inv.customerMobile || '-'}</td>
-                  <td>{inv.customerState}</td>
                   <td>
                     <span
                       className="shop-status-badge"
@@ -110,8 +292,12 @@ export default function Records({ activeInvoice, setActiveInvoice, onEditInvoice
                       {inv.paymentMode}
                     </span>
                   </td>
+                  <td><StatusBadge invoice={inv} /></td>
+                  <td style={{ textAlign: 'right', color: getBalanceDue(inv) > 0 ? 'var(--error)' : 'var(--text-muted)' }}>
+                    {getBalanceDue(inv) > 0 ? formatINR(getBalanceDue(inv)) : '-'}
+                  </td>
                   <td style={{ textAlign: 'right', fontWeight: '700', paddingRight: '20px' }}>
-                    Rs. {inv.grandTotal.toFixed(2)}
+                    {formatINR(inv.grandTotal)}
                   </td>
                 </tr>
               ))
@@ -127,11 +313,18 @@ export default function Records({ activeInvoice, setActiveInvoice, onEditInvoice
             
             {/* Modal Header Actions */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 24px', backgroundColor: 'var(--bg-panel)', borderBottom: '1px solid var(--border-color)' }}>
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button className="btn btn-primary" onClick={() => printModule.printInvoice(activeInvoice)}>🖨️ Print Invoice</button>
-                <button className="btn btn-secondary" onClick={() => printModule.saveInvoiceAsPDF(activeInvoice)}>📥 Download PDF</button>
-                <button className="btn btn-secondary" onClick={() => onEditInvoice(activeInvoice)}>✏️ Edit Invoice</button>
-                <button className="btn btn-danger" onClick={() => handleDeleteInvoice(activeInvoice)} style={{ backgroundColor: 'var(--error)', border: 'none', color: '#fff' }}>🗑️ Delete</button>
+              <div className="invoice-modal-actions">
+                <button className="btn btn-primary" onClick={() => printModule.printInvoice(activeInvoice)}>🖨️ Print</button>
+                <button className="btn btn-secondary" onClick={() => printModule.saveInvoiceAsPDF(activeInvoice)}>📥 PDF</button>
+                {getBalanceDue(activeInvoice) > 0 && (
+                  <button className="btn btn-success" onClick={() => setPaymentInvoice(activeInvoice)}>💰 Record Payment</button>
+                )}
+                <button className="btn btn-secondary" onClick={() => handleShareWhatsApp(activeInvoice)}>💬 WhatsApp</button>
+                <button className="btn btn-secondary" onClick={() => onEditInvoice(activeInvoice)}>✏️ Edit</button>
+                <button className="btn btn-secondary" onClick={() => onDuplicateInvoice(activeInvoice)}>📄 Duplicate</button>
+                {canDelete && (
+                  <button className="btn btn-danger" onClick={() => handleDeleteInvoice(activeInvoice)} style={{ backgroundColor: 'var(--error)', border: 'none', color: '#fff' }}>🗑️ Delete</button>
+                )}
               </div>
               <button 
                 onClick={() => setActiveInvoice(null)} 
@@ -161,6 +354,7 @@ export default function Records({ activeInvoice, setActiveInvoice, onEditInvoice
                 <div style={{ textAlign: 'center', fontWeight: '800', fontSize: '15px', marginBottom: '8px', textTransform: 'uppercase' }}>Tax Invoice</div>
                 
                 <table style={{ width: '100%', border: '1.5px solid #000', borderCollapse: 'collapse' }}>
+                  <tbody>
                   <tr>
                     <td style={{ width: '50%', border: '1px solid #000', padding: '6px', verticalAlign: 'top', height: '110px' }}>
                       <div style={{ fontWeight: 'bold', fontSize: '12px', textTransform: 'uppercase', marginBottom: '4px', color: '#1e3a8a' }}>
@@ -173,6 +367,7 @@ export default function Records({ activeInvoice, setActiveInvoice, onEditInvoice
                     </td>
                     <td style={{ width: '50%', border: '1px solid #000', padding: '0', verticalAlign: 'top' }}>
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10px' }}>
+                        <tbody>
                         <tr>
                           <td style={{ borderRight: '1px solid #000', borderBottom: '1px solid #000', padding: '4px', width: '50%' }}>
                             <span style={{ fontSize: '8px', color: '#555', display: 'block' }}>Invoice No.</span>
@@ -180,7 +375,7 @@ export default function Records({ activeInvoice, setActiveInvoice, onEditInvoice
                           </td>
                           <td style={{ borderBottom: '1px solid #000', padding: '4px' }}>
                             <span style={{ fontSize: '8px', color: '#555', display: 'block' }}>Dated</span>
-                            <strong>{new Date(activeInvoice.date).toLocaleDateString('en-GB')}</strong>
+                            <strong>{formatDate(activeInvoice.date)}</strong>
                           </td>
                         </tr>
                         <tr>
@@ -203,6 +398,7 @@ export default function Records({ activeInvoice, setActiveInvoice, onEditInvoice
                             <span>{activeInvoice.termsDelivery || '-'}</span>
                           </td>
                         </tr>
+                        </tbody>
                       </table>
                     </td>
                   </tr>
@@ -223,6 +419,7 @@ export default function Records({ activeInvoice, setActiveInvoice, onEditInvoice
                       {activeInvoice.destination && <div>Destination: {activeInvoice.destination}</div>}
                     </td>
                   </tr>
+                  </tbody>
                 </table>
 
                 {/* Items Grid */}
@@ -354,9 +551,15 @@ export default function Records({ activeInvoice, setActiveInvoice, onEditInvoice
                   </div>
                   <div style={{ fontStyle: 'italic', fontWeight: 'bold', alignSelf: 'flex-end' }}>E. & O.E.</div>
                 </div>
+                <div style={{ border: '1.5px solid #000', borderTop: 'none', padding: '6px 8px', display: 'flex', gap: '24px', fontSize: '10px', flexWrap: 'wrap' }}>
+                  <span>Amount Received: <strong>Rs. {getAmountPaid(activeInvoice).toFixed(2)}</strong></span>
+                  <span>Balance Due: <strong style={{ color: getBalanceDue(activeInvoice) > 0 ? '#b91c1c' : '#000' }}>Rs. {getBalanceDue(activeInvoice).toFixed(2)}</strong></span>
+                  {activeInvoice.createdBy && <span style={{ marginLeft: 'auto', color: '#555' }}>Billed by: {activeInvoice.createdBy}</span>}
+                </div>
 
                 {/* Bank / Declaration */}
                 <table style={{ width: '100%', border: '1.5px solid #000', borderTop: 'none', borderCollapse: 'collapse', marginTop: '0' }}>
+                  <tbody>
                   <tr>
                     <td style={{ width: '55%', borderRight: '1px solid #000', padding: '6px', fontSize: '9.5px', lineHeight: '1.4' }}>
                       <div>Company PAN: <strong>{activeInvoice.shopConfig?.gstNumber ? activeInvoice.shopConfig.gstNumber.substring(2, 12) : ''}</strong></div>
@@ -375,12 +578,25 @@ export default function Records({ activeInvoice, setActiveInvoice, onEditInvoice
                       <div style={{ borderTop: '1px dashed #000', width: '80%', margin: '0 auto', fontSize: '9px' }}>Proprietor Signature</div>
                     </td>
                   </tr>
+                  </tbody>
                 </table>
               </div>
             </div>
 
           </div>
         </div>
+      )}
+
+      {paymentInvoice && (
+        <PaymentModal
+          invoice={paymentInvoice}
+          onClose={() => setPaymentInvoice(null)}
+          onSaved={(updated) => {
+            setPaymentInvoice(null);
+            setActiveInvoice(updated);
+            loadInvoices();
+          }}
+        />
       )}
     </div>
   );

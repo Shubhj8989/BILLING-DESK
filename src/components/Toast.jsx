@@ -1,3 +1,5 @@
+import { escapeHtml } from '../utils/states';
+
 class ToastHelper {
   static show(message, type = 'info', duration = 3000) {
     let container = document.getElementById('toast-container');
@@ -17,7 +19,7 @@ class ToastHelper {
 
     toast.innerHTML = `
       <span class="toast-icon">${icon}</span>
-      <span class="toast-message">${message}</span>
+      <span class="toast-message">${escapeHtml(message)}</span>
       <button class="toast-close-btn">&times;</button>
     `;
 

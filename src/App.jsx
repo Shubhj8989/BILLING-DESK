@@ -1,11 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from './db/supabaseClient';
 import syncService from './db/syncService';
+import authService from './auth/authService';
 
-// Component Imports
+// Global helpers (attach window.Toast / window.Dialog)
+import './components/Toast';
+import './components/Dialog';
 import Sidebar from './components/Sidebar';
-import ToastHelper from './components/Toast';
-import DialogHelper from './components/Dialog';
+import { MENU_ITEMS } from './components/menu';
 import Login from './pages/Login';
 
 // Page Imports
@@ -13,69 +15,73 @@ import Dashboard from './pages/Dashboard';
 import Billing from './pages/Billing';
 import Products from './pages/Products';
 import Records from './pages/Records';
+import Customers from './pages/Customers';
 import Reports from './pages/Reports';
 import Settings from './pages/Settings';
 
 export default function App() {
   const [activePage, setActivePage] = useState('dashboard');
-  const [dbReady, setDbReady] = useState(false);
-  const [authChecked, setAuthChecked] = useState(false);
+  const [ready, setReady] = useState(false);
   const [user, setUser] = useState(null);
   const [shopConfig, setShopConfig] = useState({});
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  
+
   // History & Editing States
   const [activeInvoice, setActiveInvoice] = useState(null);
   const [editingInvoice, setEditingInvoice] = useState(null);
+  const [billingPrefill, setBillingPrefill] = useState(null);
 
-  // Initialize DB & Load Shop Settings & Auth Listeners
+  const startSession = useCallback(async (sessionUser) => {
+    syncService.setCloudEnabled(sessionUser.mode === 'cloud');
+    const settings = await syncService.getSettings();
+    setShopConfig(settings);
+    setUser(sessionUser);
+    setActivePage('dashboard');
+  }, []);
+
+  // Initialize DB, restore any saved session
   useEffect(() => {
-    async function initDB() {
+    let subscription;
+    async function init() {
       try {
-        // Initialize IndexedDB fallback
         await syncService.init();
-        setDbReady(true);
+        const restored = await authService.restoreSession();
+        if (restored) await startSession(restored);
+      } catch (err) {
+        console.error('Failed to initialize storage/session:', err);
+        window.Toast.error('Could not open local storage. Check that your browser allows site data.');
+      } finally {
+        setReady(true);
+      }
 
-        if (!supabase) {
-          setAuthChecked(true);
-          return;
-        }
-
-        // Check active session
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-          setUser(session.user);
-          const settings = await syncService.getSettings();
-          setShopConfig(settings);
-        }
-        setAuthChecked(true);
-
-        // Listen to Auth State Changes
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-          const activeUser = session ? session.user : null;
-          setUser(activeUser);
-          if (activeUser) {
-            const settings = await syncService.getSettings();
-            setShopConfig(settings);
-          } else {
-            setShopConfig({});
+      // Handle cloud password-reset links (user lands here from the email)
+      if (supabase) {
+        const { data } = supabase.auth.onAuthStateChange(async (event) => {
+          if (event !== 'PASSWORD_RECOVERY') return;
+          const newPassword = await window.Dialog.show({
+            title: 'Set New Password',
+            message: 'Enter a new password for your cloud account (min 6 chars, letters and numbers).',
+            isInput: true,
+            inputType: 'password',
+            confirmText: 'Update Password',
+            cancelText: 'Cancel',
+            confirmClass: 'btn-primary'
+          });
+          if (!newPassword) return;
+          try {
+            await authService.updateCloudPassword(newPassword);
+            window.Toast.success('Password updated. Please sign in.');
+          } catch (err) {
+            window.Toast.error(err.message);
           }
         });
-
-        return () => {
-          if (subscription && typeof subscription.unsubscribe === 'function') {
-            subscription.unsubscribe();
-          }
-        };
-      } catch (err) {
-        console.error('Failed to initialize IndexedDB/Auth:', err);
-        setDbReady(true);
-        setAuthChecked(true);
+        subscription = data.subscription;
       }
     }
-    initDB();
-  }, []);
+    init();
+    return () => subscription?.unsubscribe();
+  }, [startSession]);
 
   // Sync Theme State to DOM Attribute
   useEffect(() => {
@@ -90,66 +96,93 @@ export default function App() {
 
   const handleSettingsUpdated = async () => {
     try {
-      const settings = await syncService.getSettings();
-      setShopConfig(settings);
+      setShopConfig(await syncService.getSettings());
     } catch (err) {
       console.error('Settings reload failed:', err);
     }
   };
 
   const handleLogout = async () => {
-    const confirm = await window.Dialog.confirm('Are you sure you want to log out of your session?', 'Confirm Sign Out');
-    if (confirm) {
-      if (supabase && user && user.email !== 'offline@demo.local') {
-        await supabase.auth.signOut();
-      }
-      setUser(null);
-      setShopConfig({});
-      setActivePage('dashboard');
-      window.Toast.info('Signed out successfully.');
+    const confirm = await window.Dialog.confirm('Are you sure you want to sign out?', 'Confirm Sign Out');
+    if (!confirm) return;
+    await authService.logout(user);
+    syncService.setCloudEnabled(false);
+    setUser(null);
+    setShopConfig({});
+    setActiveInvoice(null);
+    setEditingInvoice(null);
+    setIsSidebarOpen(false);
+    window.Toast.info('Signed out successfully.');
+  };
+
+  const navigate = (page) => {
+    if (page === 'billing') {
+      setEditingInvoice(null);
     }
+    setActivePage(page);
+    setIsSidebarOpen(false);
   };
 
   const handleEditInvoice = (invoice) => {
     setEditingInvoice(invoice);
-    setActiveInvoice(null); // Close viewer modal
-    setActivePage('billing'); // Switch to billing screen
+    setBillingPrefill(null);
+    setActiveInvoice(null);
+    setActivePage('billing');
+  };
+
+  // Start a new bill copying items/customer from an existing invoice
+  const handleDuplicateInvoice = (invoice) => {
+    setEditingInvoice(null);
+    setBillingPrefill(invoice);
+    setActiveInvoice(null);
+    setActivePage('billing');
+  };
+
+  const handleNewBillForCustomer = (customer) => {
+    setEditingInvoice(null);
+    setBillingPrefill({
+      customerName: customer.name,
+      customerMobile: customer.mobile,
+      customerAddress: customer.address,
+      customerGstin: customer.gstin,
+      customerState: customer.state,
+      items: []
+    });
+    setActivePage('billing');
   };
 
   const handleInvoiceSaved = (invoice) => {
     setEditingInvoice(null);
-    setActiveInvoice(invoice); // Open details preview modal for printing
-    setActivePage('records'); // Redirect to history logs
+    setBillingPrefill(null);
+    setActiveInvoice(invoice); // Open preview for printing
+    setActivePage('records');
   };
 
-  if (!dbReady || !authChecked) {
+  if (!ready) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh', backgroundColor: 'var(--bg-app)', color: 'var(--text-main)', fontFamily: 'sans-serif' }}>
-        <div style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '8px' }}>VARDHMAN BILLING ENGINE</div>
-        <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Initializing storage and network authentication...</div>
+      <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh', width: '100%', backgroundColor: 'var(--bg-app)', color: 'var(--text-main)', fontFamily: 'sans-serif' }}>
+        <div style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '8px' }}>VARDHMAN BILLING DESK</div>
+        <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Opening storage…</div>
       </div>
     );
   }
 
-  // Render Login page if not signed in
   if (!user) {
-    return <Login onLoginSuccess={async (u) => {
-      setUser(u);
-      const settings = await syncService.getSettings();
-      setShopConfig(settings);
-    }} />;
+    return <Login onLoginSuccess={startSession} />;
   }
 
-  // Determine Online / Offline indicator status
-  const isCloudActive = supabase !== null && user.email !== 'offline@demo.local';
+  const isCloudActive = user.mode === 'cloud';
+  const isAdmin = user.role === 'admin';
+  const allowedPages = MENU_ITEMS.filter(item => item.roles.includes(user.role)).map(item => item.id);
+  const page = allowedPages.includes(activePage) ? activePage : 'dashboard';
 
   return (
     <div style={{ display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden' }}>
-      
+
       {/* Mobile Sidebar Overlay Backdrop */}
       {isSidebarOpen && (
-        <div 
-          className="sidebar-backdrop" 
+        <div
+          className="sidebar-backdrop"
           onClick={() => setIsSidebarOpen(false)}
           style={{
             position: 'fixed',
@@ -164,27 +197,24 @@ export default function App() {
         ></div>
       )}
 
-      {/* Sidebar navigation */}
-      <Sidebar 
-        activePage={activePage} 
-        setActivePage={(page) => {
-          if (page === 'billing') setEditingInvoice(null);
-          setActivePage(page);
-          setIsSidebarOpen(false);
-        }}
+      <Sidebar
+        activePage={page}
+        setActivePage={navigate}
         onLogout={handleLogout}
         isOpen={isSidebarOpen}
+        user={user}
+        shopName={shopConfig.shopName}
+        isCloud={isCloudActive}
       />
 
-      {/* Main page desk */}
       <main id="main-container" style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto' }}>
-        
-        {/* Header toolbar */}
+
         <header id="header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-panel)' }}>
           <div className="header-title-section" style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: '12px' }}>
             <button
               className="hamburger-btn"
               onClick={() => setIsSidebarOpen(prev => !prev)}
+              aria-label="Toggle menu"
               style={{
                 display: 'none',
                 background: 'none',
@@ -206,71 +236,95 @@ export default function App() {
                 {shopConfig.shopName || 'My Furniture House'}
               </div>
               <div className="header-subtitle" style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                {shopConfig.address || 'Local Sandbox Mode'} {shopConfig.gstNumber ? `| GST: ${shopConfig.gstNumber}` : ''}
+                {shopConfig.address || ''} {shopConfig.gstNumber ? `| GST: ${shopConfig.gstNumber}` : ''}
               </div>
             </div>
           </div>
-          
-          <div className="header-actions" style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <div 
-              className="shop-status-badge" 
-              style={{ 
-                backgroundColor: isCloudActive ? 'var(--primary-light)' : 'var(--success-bg)', 
-                color: isCloudActive ? 'var(--primary)' : 'var(--success)', 
-                padding: '4px 10px', 
-                fontSize: '11px', 
-                borderRadius: '4px', 
-                fontWeight: '600' 
+
+          <div className="header-actions" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div
+              className="shop-status-badge"
+              title={isCloudActive ? 'Data is synced to your cloud account' : 'Data is stored in this browser'}
+              style={{
+                backgroundColor: isCloudActive ? 'var(--primary-light)' : 'var(--success-bg)',
+                color: isCloudActive ? 'var(--primary)' : 'var(--success)',
+                padding: '4px 10px',
+                fontSize: '11px',
+                borderRadius: '4px',
+                fontWeight: '600'
               }}
             >
-              {isCloudActive ? `☁️ Cloud Account: ${user.email}` : '⚡ Offline Demo (Local)'}
+              {isCloudActive ? `☁️ ${user.email}` : `👤 ${user.name} (${isAdmin ? 'Admin' : 'Staff'})`}
             </div>
-            <button 
-              className="btn-theme-toggle" 
-              onClick={toggleTheme} 
+            <button
+              className="btn-theme-toggle"
+              onClick={toggleTheme}
               title="Toggle Light/Dark Theme"
               style={{ background: 'none', border: '1px solid var(--border-color)', borderRadius: '50%', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '16px' }}
             >
               {theme === 'dark' ? '☀️' : '🌙'}
             </button>
+            <button
+              className="btn-theme-toggle header-logout-btn"
+              onClick={handleLogout}
+              title="Sign out"
+              aria-label="Sign out"
+              style={{ background: 'none', border: '1px solid var(--border-color)', borderRadius: '50%', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '15px' }}
+            >
+              🚪
+            </button>
           </div>
         </header>
 
-        {/* Content switch area */}
         <div id="content-area" style={{ flex: 1, padding: '24px', backgroundColor: 'var(--bg-app)' }}>
-          {activePage === 'dashboard' && (
-            <Dashboard 
-              setActivePage={setActivePage} 
+          {page === 'dashboard' && (
+            <Dashboard
+              setActivePage={navigate}
+              shopConfig={shopConfig}
+              user={user}
               onViewInvoice={(inv) => {
                 setActiveInvoice(inv);
                 setActivePage('records');
-              }} 
+              }}
             />
           )}
-          
-          {activePage === 'billing' && (
-            <Billing 
-              editingInvoice={editingInvoice} 
-              onInvoiceSaved={handleInvoiceSaved} 
-              setActivePage={setActivePage}
+
+          {page === 'billing' && (
+            <Billing
+              editingInvoice={editingInvoice}
+              prefill={billingPrefill}
+              onPrefillConsumed={() => setBillingPrefill(null)}
+              onInvoiceSaved={handleInvoiceSaved}
+              user={user}
             />
           )}
-          
-          {activePage === 'products' && <Products />}
-          
-          {activePage === 'records' && (
-            <Records 
-              activeInvoice={activeInvoice} 
-              setActiveInvoice={setActiveInvoice} 
+
+          {page === 'products' && <Products canEdit={isAdmin} shopConfig={shopConfig} />}
+
+          {page === 'records' && (
+            <Records
+              activeInvoice={activeInvoice}
+              setActiveInvoice={setActiveInvoice}
               onEditInvoice={handleEditInvoice}
-              setActivePage={setActivePage}
+              onDuplicateInvoice={handleDuplicateInvoice}
+              canDelete={isAdmin}
             />
           )}
-          
-          {activePage === 'reports' && <Reports />}
-          
-          {activePage === 'settings' && (
-            <Settings onSettingsUpdated={handleSettingsUpdated} />
+
+          {page === 'customers' && (
+            <Customers
+              onNewBill={handleNewBillForCustomer}
+              onViewInvoice={(inv) => {
+                setActiveInvoice(inv);
+                setActivePage('records');
+              }}
+            />
+          )}
+
+          {page === 'reports' && <Reports />}
+
+          {page === 'settings' && (
+            <Settings onSettingsUpdated={handleSettingsUpdated} user={user} />
           )}
         </div>
       </main>

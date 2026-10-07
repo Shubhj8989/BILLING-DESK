@@ -1,4 +1,4 @@
-const CACHE_NAME = 'vardhman-billing-v12';
+const CACHE_NAME = 'vardhman-billing-v13';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',

@@ -514,7 +514,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  z-index: 10000;
+  z-index: 30000;
   pointer-events: none;
 }
 
@@ -605,7 +605,7 @@ body {
     width: 76px;
   }
   #sidebar .sidebar-brand,
-  #sidebar .menu-item span,
+  #sidebar .menu-item-label,
   #sidebar .sidebar-footer {
     display: none !important;
   }
@@ -644,7 +644,7 @@ body {
     transform: translateX(0);
   }
   #sidebar.open .sidebar-brand,
-  #sidebar.open .menu-item span,
+  #sidebar.open .menu-item-label,
   #sidebar.open .sidebar-footer {
     display: block !important;
   }

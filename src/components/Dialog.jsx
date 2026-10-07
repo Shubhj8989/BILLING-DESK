@@ -1,3 +1,5 @@
+import { escapeHtml } from '../utils/states';
+
 class DialogHelper {
   static show(options = {}) {
     return new Promise((resolve) => {
@@ -16,6 +18,8 @@ class DialogHelper {
       // Overlay
       const overlay = document.createElement('div');
       overlay.className = 'dialog-overlay';
+      // Confirmations must sit above React modals (z-index 10000+)
+      overlay.style.zIndex = '20000';
 
       // Box
       const box = document.createElement('div');
@@ -24,22 +28,22 @@ class DialogHelper {
       let inputHtml = '';
       if (isInput) {
         inputHtml = `<div class="dialog-input-wrapper">
-          <input type="${inputType}" class="dialog-input form-control" value="${inputValue}" placeholder="${inputPlaceholder}" id="dialog-input-field">
+          <input type="${escapeHtml(inputType)}" class="dialog-input form-control" value="${escapeHtml(inputValue)}" placeholder="${escapeHtml(inputPlaceholder)}" id="dialog-input-field">
         </div>`;
       }
 
       box.innerHTML = `
         <div class="dialog-header">
-          <h3>${title}</h3>
+          <h3>${escapeHtml(title)}</h3>
           <button class="dialog-close-btn">&times;</button>
         </div>
         <div class="dialog-body">
-          <p>${message}</p>
+          <p>${escapeHtml(message)}</p>
           ${inputHtml}
         </div>
         <div class="dialog-footer">
-          ${cancelText ? `<button class="btn btn-secondary dialog-cancel-btn">${cancelText}</button>` : ''}
-          <button class="btn ${confirmClass} dialog-confirm-btn">${confirmText}</button>
+          ${cancelText ? `<button class="btn btn-secondary dialog-cancel-btn">${escapeHtml(cancelText)}</button>` : ''}
+          <button class="btn ${confirmClass} dialog-confirm-btn">${escapeHtml(confirmText)}</button>
         </div>
       `;
 

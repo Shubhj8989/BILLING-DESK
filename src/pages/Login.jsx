@@ -1,234 +1,364 @@
-import React, { useState } from 'react';
-import { supabase } from '../db/supabaseClient';
+import React, { useState, useEffect } from 'react';
+import authService from '../auth/authService';
+import syncService from '../db/syncService';
+
+function Field({ label, children, hint }) {
+  return (
+    <div className="auth-field">
+      <label>{label}</label>
+      {children}
+      {hint && <span className="auth-hint">{hint}</span>}
+    </div>
+  );
+}
+
+function PasswordInput({ value, onChange, placeholder = '••••••••', autoComplete = 'current-password', autoFocus = false }) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <div className="auth-password-wrap">
+      <input
+        type={visible ? 'text' : 'password'}
+        className="form-control"
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        autoComplete={autoComplete}
+        autoFocus={autoFocus}
+        required
+      />
+      <button type="button" className="auth-eye-btn" onClick={() => setVisible(v => !v)} aria-label={visible ? 'Hide password' : 'Show password'}>
+        {visible ? 'Hide' : 'Show'}
+      </button>
+    </div>
+  );
+}
+
+function RecoveryCodePanel({ code, onDone }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+    } catch {
+      window.Toast.warn('Copy failed. Please write the code down manually.');
+    }
+  };
+  return (
+    <div className="auth-stack">
+      <div className="auth-notice auth-notice-warning">
+        Save this <strong>recovery code</strong> somewhere safe (write it down). It is the only way to reset your password if you forget it. It will not be shown again.
+      </div>
+      <div className="auth-recovery-code">{code}</div>
+      <button type="button" className="btn btn-secondary" onClick={copy}>{copied ? 'Copied ✓' : 'Copy code'}</button>
+      <button type="button" className="btn btn-primary auth-submit" onClick={onDone}>I have saved it — continue</button>
+    </div>
+  );
+}
 
 export default function Login({ onLoginSuccess }) {
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [shopName, setShopName] = useState('');
+  // views: loading | setup | login | recover | recovery-code | cloud-signup | cloud-forgot
+  const [view, setView] = useState('loading');
+  const [tab, setTab] = useState('local');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [infoMsg, setInfoMsg] = useState('');
+  const [cloudReachable, setCloudReachable] = useState(null);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setErrorMsg('');
-    setLoading(true);
+  const [name, setName] = useState('');
+  const [shopName, setShopName] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [recoveryInput, setRecoveryInput] = useState('');
+  const [remember, setRemember] = useState(true);
 
-    if (!supabase) {
-      setErrorMsg('Supabase URL/Key is not configured. Please test using the Offline Demo mode below.');
-      setLoading(false);
-      return;
+  const [issuedCode, setIssuedCode] = useState('');
+  const [pendingUser, setPendingUser] = useState(null);
+
+  const cloudConfigured = authService.isCloudConfigured();
+
+  useEffect(() => {
+    authService.hasLocalUsers().then(has => setView(has ? 'login' : 'setup'));
+  }, []);
+
+  useEffect(() => {
+    if (tab === 'cloud' && cloudReachable === null) {
+      authService.isCloudReachable().then(setCloudReachable);
     }
+  }, [tab, cloudReachable]);
 
+  const switchView = (next) => {
+    setErrorMsg('');
+    setInfoMsg('');
+    setPassword('');
+    setConfirmPassword('');
+    setRecoveryInput('');
+    setView(next);
+  };
+
+  const run = async (fn) => {
+    setErrorMsg('');
+    setInfoMsg('');
+    setLoading(true);
     try {
-      if (isSignUp) {
-        const { data, error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: {
-              shop_name: shopName || 'My Furniture House'
-            }
-          }
-        });
-        if (error) throw error;
-        
-        if (data.session) {
-          window.Toast.success('Sign up successful! Logged in.');
-          onLoginSuccess(data.user);
-        } else {
-          window.Toast.info('Verification email sent! Please confirm your email.');
-          setIsSignUp(false); // Shift to login view
-        }
-      } else {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email,
-          password
-        });
-        if (error) throw error;
-        window.Toast.success('Signed in successfully.');
-        onLoginSuccess(data.user);
-      }
+      await fn();
     } catch (err) {
-      console.error('Authentication error:', err);
-      setErrorMsg(err.message || 'Authentication failed. Please check credentials.');
+      setErrorMsg(err.message || 'Something went wrong.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleOfflineMode = () => {
-    window.Toast.info('Offline Demo mode activated. Using local browser IndexedDB cache.');
-    // Mock user for offline mode bypass
-    onLoginSuccess({
-      id: 'offline_local_owner',
-      email: 'offline@demo.local',
-      user_metadata: { shop_name: 'Vardhman Furniture House' }
+  const requireMatch = () => {
+    if (password !== confirmPassword) throw new Error('Passwords do not match.');
+  };
+
+  const handleSetup = (e) => {
+    e.preventDefault();
+    run(async () => {
+      requireMatch();
+      const { user, recoveryCode } = await authService.createOwner({ name, username, password });
+      if (shopName.trim()) {
+        const settings = await syncService.getSettings();
+        await syncService.saveSettings({ ...settings, shopName: shopName.trim() });
+      }
+      // Owner setup signs in straight away
+      await authService.loginLocal(user.username, password, true);
+      setPendingUser(user);
+      setIssuedCode(recoveryCode);
+      setView('recovery-code');
     });
   };
 
+  const handleLocalLogin = (e) => {
+    e.preventDefault();
+    run(async () => {
+      const user = await authService.loginLocal(username, password, remember);
+      window.Toast.success(`Welcome back, ${user.name}!`);
+      onLoginSuccess(user);
+    });
+  };
+
+  const handleRecover = (e) => {
+    e.preventDefault();
+    run(async () => {
+      requireMatch();
+      const newCode = await authService.resetWithRecoveryCode(username, recoveryInput, password);
+      setPendingUser(null);
+      setIssuedCode(newCode);
+      setView('recovery-code');
+      window.Toast.success('Password reset. Your old recovery code no longer works.');
+    });
+  };
+
+  const handleCloudLogin = (e) => {
+    e.preventDefault();
+    run(async () => {
+      const user = await authService.loginCloud(username, password, remember);
+      window.Toast.success('Signed in to cloud account.');
+      onLoginSuccess(user);
+    });
+  };
+
+  const handleCloudSignup = (e) => {
+    e.preventDefault();
+    run(async () => {
+      requireMatch();
+      const result = await authService.signUpCloud({ email: username, password, fullName: name });
+      if (result.user) {
+        onLoginSuccess(result.user);
+      } else {
+        switchView('login');
+        setInfoMsg('Verification email sent. Confirm your email, then sign in.');
+      }
+    });
+  };
+
+  const handleCloudForgot = (e) => {
+    e.preventDefault();
+    run(async () => {
+      await authService.sendCloudPasswordReset(username);
+      setInfoMsg('If an account exists for this email, a password reset link has been sent.');
+    });
+  };
+
+  const finishRecoveryCode = () => {
+    if (pendingUser) {
+      onLoginSuccess(pendingUser);
+    } else {
+      switchView('login');
+      setInfoMsg('Sign in with your new password.');
+    }
+  };
+
+  const subtitle = {
+    loading: '',
+    setup: 'First-time setup: create the owner (admin) account',
+    login: tab === 'local' ? 'Sign in to your billing desk' : 'Sign in to your cloud account',
+    recover: 'Reset your password with your recovery code',
+    'recovery-code': 'Your recovery code',
+    'cloud-signup': 'Create a cloud account',
+    'cloud-forgot': 'Reset your cloud account password'
+  }[view];
+
   return (
-    <div style={{
-      display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'center',
-      minHeight: '100vh',
-      width: '100vw',
-      backgroundColor: 'var(--bg-app)',
-      fontFamily: 'var(--font-display), sans-serif',
-      color: 'var(--text-main)',
-      padding: '24px',
-      boxSizing: 'border-box'
-    }}>
-      <div className="card" style={{
-        width: '100%',
-        maxWidth: '420px',
-        padding: '36px',
-        borderRadius: 'var(--radius-lg)',
-        boxShadow: 'var(--shadow-md)',
-        backgroundColor: 'var(--bg-panel)',
-        border: '1px solid var(--border-color)',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '20px'
-      }}>
-        
-        <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
-          <div style={{ width: '45px', height: '45px', borderRadius: 'var(--radius-sm)', overflow: 'hidden', backgroundColor: 'var(--primary-light)', padding: '4px' }}>
-            <img src="/assets/default-logo.svg" alt="logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+    <div className="auth-page">
+      <div className="auth-card card">
+        <div className="auth-brand">
+          <div className="auth-logo">
+            <img src="/assets/default-logo.svg" alt="" />
           </div>
-          <h2 style={{ margin: '0', fontSize: '18px', fontWeight: '800', letterSpacing: '0.5px' }}>
-            VARDHMAN BILLING DESK
-          </h2>
-          <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-            {isSignUp ? 'Create your shop cloud account' : 'Sign in to access your cloud invoices'}
-          </span>
+          <h1>Vardhman Billing Desk</h1>
+          <span>{subtitle}</span>
         </div>
 
-        {errorMsg && (
-          <div style={{
-            backgroundColor: 'rgba(239, 68, 68, 0.1)',
-            border: '1px solid var(--error)',
-            color: 'var(--error)',
-            padding: '12px',
-            borderRadius: 'var(--radius-sm)',
-            fontSize: '12px',
-            lineHeight: '1.4'
-          }}>
-            ⚠️ {errorMsg}
-          </div>
+        {errorMsg && <div className="auth-notice auth-notice-error" role="alert">{errorMsg}</div>}
+        {infoMsg && <div className="auth-notice auth-notice-info">{infoMsg}</div>}
+
+        {view === 'loading' && <div className="auth-hint" style={{ textAlign: 'center' }}>Loading…</div>}
+
+        {view === 'setup' && (
+          <form onSubmit={handleSetup} className="auth-stack">
+            <Field label="Your Full Name">
+              <input className="form-control" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Shivam Jain" required autoFocus />
+            </Field>
+            <Field label="Shop Name (optional)">
+              <input className="form-control" value={shopName} onChange={(e) => setShopName(e.target.value)} placeholder="e.g. Vardhman Furniture House" />
+            </Field>
+            <Field label="Username" hint="Lowercase letters, numbers, dot, dash or underscore">
+              <input className="form-control" value={username} onChange={(e) => setUsername(e.target.value.toLowerCase())} placeholder="e.g. owner" autoComplete="username" required />
+            </Field>
+            <Field label="Password" hint="At least 6 characters with letters and numbers">
+              <PasswordInput value={password} onChange={setPassword} autoComplete="new-password" />
+            </Field>
+            <Field label="Confirm Password">
+              <PasswordInput value={confirmPassword} onChange={setConfirmPassword} autoComplete="new-password" />
+            </Field>
+            <button type="submit" className="btn btn-primary auth-submit" disabled={loading}>
+              {loading ? 'Creating account…' : 'Create Owner Account'}
+            </button>
+          </form>
         )}
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          {isSignUp && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-              <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-light)' }}>Shop Business Name</label>
-              <input
-                type="text"
-                className="form-control"
-                placeholder="e.g. Vardhman Furniture House"
-                value={shopName}
-                onChange={(e) => setShopName(e.target.value)}
-                required
-              />
+        {view === 'recovery-code' && <RecoveryCodePanel code={issuedCode} onDone={finishRecoveryCode} />}
+
+        {view === 'login' && (
+          <>
+            {cloudConfigured && (
+              <div className="auth-tabs" role="tablist">
+                <button type="button" role="tab" aria-selected={tab === 'local'} className={tab === 'local' ? 'active' : ''} onClick={() => { setTab('local'); setErrorMsg(''); }}>
+                  This Device
+                </button>
+                <button type="button" role="tab" aria-selected={tab === 'cloud'} className={tab === 'cloud' ? 'active' : ''} onClick={() => { setTab('cloud'); setErrorMsg(''); }}>
+                  Cloud Account
+                </button>
+              </div>
+            )}
+
+            {tab === 'local' ? (
+              <form onSubmit={handleLocalLogin} className="auth-stack">
+                <Field label="Username">
+                  <input className="form-control" value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" required autoFocus />
+                </Field>
+                <Field label="Password">
+                  <PasswordInput value={password} onChange={setPassword} />
+                </Field>
+                <div className="auth-row">
+                  <label className="auth-check">
+                    <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /> Keep me signed in (7 days)
+                  </label>
+                  <a className="auth-link" onClick={() => switchView('recover')}>Forgot password?</a>
+                </div>
+                <button type="submit" className="btn btn-primary auth-submit" disabled={loading}>
+                  {loading ? 'Signing in…' : 'Sign In'}
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleCloudLogin} className="auth-stack">
+                {cloudReachable === false && (
+                  <div className="auth-notice auth-notice-warning">
+                    The cloud server can't be reached right now. You can still use a local account on the "This Device" tab.
+                  </div>
+                )}
+                <Field label="Email Address">
+                  <input type="email" className="form-control" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="name@shop.com" autoComplete="email" required />
+                </Field>
+                <Field label="Password">
+                  <PasswordInput value={password} onChange={setPassword} />
+                </Field>
+                <div className="auth-row">
+                  <label className="auth-check">
+                    <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} /> Keep me signed in
+                  </label>
+                  <a className="auth-link" onClick={() => switchView('cloud-forgot')}>Forgot password?</a>
+                </div>
+                <button type="submit" className="btn btn-primary auth-submit" disabled={loading}>
+                  {loading ? 'Signing in…' : 'Sign In to Cloud'}
+                </button>
+                <div className="auth-footer-text">
+                  No cloud account? <a className="auth-link" onClick={() => switchView('cloud-signup')}>Create one</a>
+                </div>
+              </form>
+            )}
+          </>
+        )}
+
+        {view === 'recover' && (
+          <form onSubmit={handleRecover} className="auth-stack">
+            <Field label="Username">
+              <input className="form-control" value={username} onChange={(e) => setUsername(e.target.value)} required autoFocus />
+            </Field>
+            <Field label="Recovery Code" hint="The code shown when the account was created, e.g. 1A2B-3C4D-5E6F-7A8B">
+              <input className="form-control" value={recoveryInput} onChange={(e) => setRecoveryInput(e.target.value)} placeholder="XXXX-XXXX-XXXX-XXXX" required />
+            </Field>
+            <Field label="New Password">
+              <PasswordInput value={password} onChange={setPassword} autoComplete="new-password" />
+            </Field>
+            <Field label="Confirm New Password">
+              <PasswordInput value={confirmPassword} onChange={setConfirmPassword} autoComplete="new-password" />
+            </Field>
+            <button type="submit" className="btn btn-primary auth-submit" disabled={loading}>
+              {loading ? 'Resetting…' : 'Reset Password'}
+            </button>
+            <div className="auth-footer-text">
+              Staff members: ask the shop owner to reset your password from Settings → Users.
             </div>
-          )}
+            <a className="auth-link auth-back" onClick={() => switchView('login')}>← Back to sign in</a>
+          </form>
+        )}
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-light)' }}>Email Address</label>
-            <input
-              type="email"
-              className="form-control"
-              placeholder="name@shop.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-            />
-          </div>
+        {view === 'cloud-signup' && (
+          <form onSubmit={handleCloudSignup} className="auth-stack">
+            <Field label="Full Name">
+              <input className="form-control" value={name} onChange={(e) => setName(e.target.value)} required autoFocus />
+            </Field>
+            <Field label="Email Address">
+              <input type="email" className="form-control" value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="email" required />
+            </Field>
+            <Field label="Password" hint="At least 6 characters with letters and numbers">
+              <PasswordInput value={password} onChange={setPassword} autoComplete="new-password" />
+            </Field>
+            <Field label="Confirm Password">
+              <PasswordInput value={confirmPassword} onChange={setConfirmPassword} autoComplete="new-password" />
+            </Field>
+            <button type="submit" className="btn btn-primary auth-submit" disabled={loading}>
+              {loading ? 'Creating…' : 'Create Cloud Account'}
+            </button>
+            <a className="auth-link auth-back" onClick={() => switchView('login')}>← Back to sign in</a>
+          </form>
+        )}
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-light)' }}>Password</label>
-            <input
-              type="password"
-              className="form-control"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-            />
-          </div>
-
-          <button
-            type="submit"
-            className="btn btn-primary"
-            disabled={loading}
-            style={{
-              padding: '12px',
-              borderRadius: 'var(--radius-sm)',
-              fontWeight: '600',
-              marginTop: '8px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              cursor: 'pointer'
-            }}
-          >
-            {loading ? 'Authenticating...' : isSignUp ? 'Create Cloud Account' : 'Sign In'}
-          </button>
-        </form>
-
-        <div style={{ textAlign: 'center', fontSize: '12px', color: 'var(--text-muted)' }}>
-          {isSignUp ? (
-            <span>
-              Already have an account?{' '}
-              <a
-                onClick={() => setIsSignUp(false)}
-                style={{ color: 'var(--primary)', cursor: 'pointer', fontWeight: '600', textDecoration: 'underline' }}
-              >
-                Sign In
-              </a>
-            </span>
-          ) : (
-            <span>
-              Don't have an account?{' '}
-              <a
-                onClick={() => setIsSignUp(true)}
-                style={{ color: 'var(--primary)', cursor: 'pointer', fontWeight: '600', textDecoration: 'underline' }}
-              >
-                Create Account
-              </a>
-            </span>
-          )}
-        </div>
-
-        <div style={{
-          borderTop: '1px solid var(--border-color)',
-          paddingTop: '16px',
-          textAlign: 'center',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '8px'
-        }}>
-          <span style={{ fontSize: '11px', color: 'var(--text-light)' }}>No Cloud Database? Run locally:</span>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            onClick={handleOfflineMode}
-            style={{
-              padding: '10px',
-              fontSize: '12.5px',
-              fontWeight: '600',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '6px'
-            }}
-          >
-            ⚡ Try Offline Demo (Local Storage)
-          </button>
-        </div>
-
+        {view === 'cloud-forgot' && (
+          <form onSubmit={handleCloudForgot} className="auth-stack">
+            <Field label="Email Address">
+              <input type="email" className="form-control" value={username} onChange={(e) => setUsername(e.target.value)} required autoFocus />
+            </Field>
+            <button type="submit" className="btn btn-primary auth-submit" disabled={loading}>
+              {loading ? 'Sending…' : 'Send Reset Link'}
+            </button>
+            <a className="auth-link auth-back" onClick={() => switchView('login')}>← Back to sign in</a>
+          </form>
+        )}
       </div>
     </div>
   );

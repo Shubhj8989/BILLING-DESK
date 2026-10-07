@@ -1,6 +1,8 @@
 import { jsPDF } from 'jspdf';
 import JsBarcode from 'jsbarcode';
 import { convertNumberToWords } from './numbers';
+import { getStateCode, escapeHtml } from './states';
+import { formatDate } from './invoice';
 
 class PrintModule {
   // --- NATIVE PRINT TRIGGERING ---
@@ -21,7 +23,20 @@ class PrintModule {
     qrImg.src = 'assets/my-qr.jpeg';
   }
 
-  preparePrintContainer(invoice) {
+  // Escape every user-entered string before it goes into the print HTML
+  escapeInvoice(invoice) {
+    const escapeStrings = (obj) => Object.fromEntries(
+      Object.entries(obj || {}).map(([k, v]) => [k, typeof v === 'string' ? escapeHtml(v) : v])
+    );
+    return {
+      ...escapeStrings(invoice),
+      shopConfig: escapeStrings(invoice.shopConfig),
+      items: (invoice.items || []).map(escapeStrings)
+    };
+  }
+
+  preparePrintContainer(rawInvoice) {
+    const invoice = this.escapeInvoice(rawInvoice);
     let container = document.getElementById('global-print-container');
     if (!container) {
       container = document.createElement('div');
@@ -31,7 +46,7 @@ class PrintModule {
     }
 
     const shop = invoice.shopConfig || {};
-    const formattedDate = new Date(invoice.date).toLocaleDateString('en-GB');
+    const formattedDate = formatDate(invoice.date);
 
     container.innerHTML = `
       <div style="display:block; font-family: 'Arial', sans-serif; font-size: 10.5px; color: #000; line-height: 1.35; width: 100%; box-sizing: border-box; background: #fff;">
@@ -375,21 +390,7 @@ class PrintModule {
 
   // --- TALLY HELPERS ---
   getStateCode(state) {
-    const codes = {
-      'Delhi': '07',
-      'Haryana': '06',
-      'Punjab': '03',
-      'Rajasthan': '08',
-      'Uttar Pradesh': '09',
-      'Madhya Pradesh': '23',
-      'Himachal Pradesh': '02',
-      'Uttarakhand': '05',
-      'Bihar': '10',
-      'Gujarat': '24',
-      'Maharashtra': '27',
-      'Karnataka': '29'
-    };
-    return codes[state] || '09';
+    return getStateCode(state);
   }
 
   generateEmptyRows(length) {
@@ -518,7 +519,7 @@ class PrintModule {
       doc.setFont('Helvetica', 'normal');
       doc.setFontSize(8);
       doc.text(`Invoice No: ${invoice.invoiceNumber}`, 140, 20);
-      doc.text(`Date: ${new Date(invoice.date).toLocaleDateString('en-GB')}`, 140, 24);
+      doc.text(`Date: ${formatDate(invoice.date)}`, 140, 24);
       doc.text(`Time: ${invoice.time} | Mode: ${invoice.paymentMode}`, 140, 28);
 
       // Section divider line
@@ -692,9 +693,9 @@ class PrintModule {
         displayValue: false
       });
       const barcodeImgData = barcodeCanvas.toDataURL("image/png");
-      doc.addImage(barcodeImgData, 'PNG', 10, y + 22, 45, 7);
+      doc.addImage(barcodeImgData, 'PNG', 10, y + 26, 45, 7);
       doc.setFontSize(6.5);
-      doc.text(`Invoice Ref: ${invoice.invoiceNumber}`, 18, y + 31.5);
+      doc.text(`Invoice Ref: ${invoice.invoiceNumber}`, 18, y + 35.5);
 
       // Try to load static QR Code and add to PDF, otherwise save immediately
       const qrImg = new Image();

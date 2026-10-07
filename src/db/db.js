@@ -1,7 +1,7 @@
 class AppDB {
   constructor() {
     this.dbName = 'VardhmanBillingDB';
-    this.dbVersion = 1;
+    this.dbVersion = 2;
     this.db = null;
   }
 
@@ -34,6 +34,12 @@ class AppDB {
           invoiceStore.createIndex('customerMobile', 'customerMobile', { unique: false });
           invoiceStore.createIndex('customerName', 'customerName', { unique: false });
         }
+
+        // Local user accounts (v2)
+        if (!db.objectStoreNames.contains('users')) {
+          const userStore = db.createObjectStore('users', { keyPath: 'id', autoIncrement: true });
+          userStore.createIndex('username', 'username', { unique: true });
+        }
       };
 
       request.onsuccess = (event) => {
@@ -48,6 +54,27 @@ class AppDB {
   }
 
   // --- SETTINGS OPERATIONS ---
+  getDefaultSettings() {
+    return {
+      shopName: 'Vardhman Furniture House and Electronics',
+      gstNumber: '09AZUPJ8074C1ZV',
+      address: 'Infront of Bharat Petroleum, Mahroni Road, Madawara - 284404',
+      state: 'Uttar Pradesh',
+      mobile: '9907879457',
+      email: '',
+      bankName: 'HDFC Bank',
+      bankAccount: '50200094231111',
+      bankIfsc: 'HDFC0008617',
+      upiId: '',
+      proprietor: 'SHIVAM JAIN',
+      logo: '',
+      invoicePrefix: 'VFH/',
+      invoiceStartNumber: 1001,
+      lowStockThreshold: 5,
+      terms: '1. Goods once sold will not be taken back.\n2. Warranty as per manufacturer terms.\n3. Subject to local jurisdiction.'
+    };
+  }
+
   getSettings() {
     return new Promise((resolve, reject) => {
       const transaction = this.db.transaction(['settings'], 'readonly');
@@ -55,30 +82,9 @@ class AppDB {
       const request = store.get('shop_config');
 
       request.onsuccess = () => {
-        const defaultSettings = {
-          shopName: 'Vardhman Furniture House and Electronics',
-          gstNumber: '09AZUPJ8074C1ZV',
-          address: 'Infront of Bharat Petroleum, Mahroni Road, Madawara - 284404',
-          mobile: '9907879457',
-          bankAccount: '50200094231111',
-          bankIfsc: 'HDFC0008617',
-          proprietor: 'SHIVAM JAIN',
-          logo: '',
-          invoicePrefix: 'VFH/',
-          invoiceStartNumber: 1001,
-          terms: '1. Goods once sold will not be taken back.\n2. Warranty as per manufacturer terms.\n3. Subject to local jurisdiction.'
-        };
-        const result = request.result || defaultSettings;
-
-        // Auto-upgrade configuration if old settings or placeholders exist
-        if (!request.result || !result.bankAccount || result.proprietor !== 'SHIVAM JAIN' || result.gstNumber !== '09AZUPJ8074C1ZV') {
-          Object.assign(result, defaultSettings);
-          const writeTx = this.db.transaction(['settings'], 'readwrite');
-          const writeStore = writeTx.objectStore('settings');
-          writeStore.put(result, 'shop_config');
-        }
-
-        resolve(result);
+        // Merge saved values over defaults so new fields get sane values,
+        // without ever overwriting what the user saved.
+        resolve({ ...this.getDefaultSettings(), ...(request.result || {}) });
       };
 
       request.onerror = () => reject(request.error);
@@ -226,6 +232,47 @@ class AppDB {
     });
   }
 
+  // --- USER ACCOUNT OPERATIONS ---
+  getUsers() {
+    return new Promise((resolve, reject) => {
+      const request = this.db.transaction(['users'], 'readonly').objectStore('users').getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  getUserByUsername(username) {
+    return new Promise((resolve, reject) => {
+      const request = this.db.transaction(['users'], 'readonly').objectStore('users').index('username').get(username);
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  getUserById(id) {
+    return new Promise((resolve, reject) => {
+      const request = this.db.transaction(['users'], 'readonly').objectStore('users').get(Number(id));
+      request.onsuccess = () => resolve(request.result || null);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  saveUser(user) {
+    return new Promise((resolve, reject) => {
+      const request = this.db.transaction(['users'], 'readwrite').objectStore('users').put(user);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  deleteUser(id) {
+    return new Promise((resolve, reject) => {
+      const request = this.db.transaction(['users'], 'readwrite').objectStore('users').delete(Number(id));
+      request.onsuccess = () => resolve(true);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
   // --- DATABASE RESET / RESTORE ---
   clearAll() {
     return new Promise((resolve, reject) => {
@@ -245,7 +292,7 @@ class AppDB {
 
   // Import entire backup JSON
   importBackup(backupData) {
-    return new Promise(async (resolve, reject) => {
+    return new Promise((resolve, reject) => {
       try {
         const transaction = this.db.transaction(['settings', 'products', 'invoices'], 'readwrite');
         

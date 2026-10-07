@@ -1,12 +1,64 @@
 import React, { useState, useEffect, useRef } from 'react';
-import dbInstance from '../db/syncService';
+import syncService from '../db/syncService';
 import AutoComplete from '../components/AutoComplete';
 import { convertNumberToWords } from '../utils/numbers';
+import { INDIAN_STATES, DEFAULT_STATE } from '../utils/states';
+import { getAmountPaid, getTodayDateStr } from '../utils/invoice';
 
-export default function Billing({ editingInvoice, onInvoiceSaved, setActivePage }) {
+let rowIdCounter = 0;
+const createEmptyRow = () => ({
+  id: `row-${Date.now()}-${rowIdCounter++}`,
+  barcode: '', name: '', hsn: '', qty: 1, unit: 'PCS', rate: 0, discount: 0, discountType: 'percent', gst: 18, taxableAmount: 0, cgst: 0, sgst: 0, total: 0
+});
+
+const toNumber = (value, fallback = 0) => {
+  const n = parseFloat(value);
+  return Number.isNaN(n) ? fallback : n;
+};
+
+const getCurrentTimeStr = () => new Date().toTimeString().split(' ')[0].substring(0, 5);
+
+// --- ROW CALCULATOR ---
+const recalculateRowFields = (qty, rate, discount, discountType, gst) => {
+  const base = qty * rate;
+  const disc = discountType === 'percent' ? (base * (discount / 100)) : discount;
+  const taxable = Math.max(0, base - disc);
+  const gstAmt = taxable * (gst / 100);
+  const split = gstAmt / 2;
+  return {
+    taxableAmount: taxable,
+    cgst: split,
+    sgst: split,
+    total: taxable + gstAmt
+  };
+};
+
+const mapItemsToRows = (items = []) => {
+  const mapped = items.map(item => ({
+    ...createEmptyRow(),
+    barcode: item.barcode || '',
+    name: item.name,
+    hsn: item.hsn || '',
+    qty: item.qty,
+    unit: item.unit || 'PCS',
+    rate: item.rate,
+    discount: item.discount || 0,
+    discountType: item.discountType || 'percent',
+    gst: item.gst ?? 18,
+    taxableAmount: item.taxableAmount || 0,
+    cgst: item.cgst || 0,
+    sgst: item.sgst || 0,
+    total: item.total || 0
+  }));
+  return mapped.length ? mapped : [createEmptyRow()];
+};
+
+export default function Billing({ editingInvoice, prefill, onPrefillConsumed, onInvoiceSaved, user }) {
   const [shopConfig, setShopConfig] = useState({});
   const [productSuggestions, setProductSuggestions] = useState([]);
-  
+  const [pastInvoices, setPastInvoices] = useState([]);
+  const [saving, setSaving] = useState(false);
+
   // Metadata States
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [date, setDate] = useState('');
@@ -15,9 +67,10 @@ export default function Billing({ editingInvoice, onInvoiceSaved, setActivePage 
   const [customerAddress, setCustomerAddress] = useState('');
   const [customerMobile, setCustomerMobile] = useState('');
   const [customerGstin, setCustomerGstin] = useState('');
-  const [customerState, setCustomerState] = useState('Uttar Pradesh');
+  const [customerState, setCustomerState] = useState(DEFAULT_STATE);
   const [paymentMode, setPaymentMode] = useState('Cash');
   const [salesperson, setSalesperson] = useState('');
+  const [notes, setNotes] = useState('');
 
   // Transport details
   const [deliveryNote, setDeliveryNote] = useState('');
@@ -31,323 +84,269 @@ export default function Billing({ editingInvoice, onInvoiceSaved, setActivePage 
   const [freight, setFreight] = useState('');
   const [freightGst, setFreightGst] = useState('18');
   const [extraDiscount, setExtraDiscount] = useState('');
+  // Empty string = "full amount received" (or nothing, for Credit)
+  const [amountReceived, setAmountReceived] = useState('');
 
-  // Rows State
-  const [rows, setRows] = useState([
-    { id: Date.now(), barcode: '', name: '', hsn: '', qty: 1, unit: 'PCS', rate: 0, discount: 0, discountType: 'percent', gst: 18, taxableAmount: 0, cgst: 0, sgst: 0, total: 0 }
-  ]);
+  const [rows, setRows] = useState([createEmptyRow()]);
 
   const [autosaveIndicator, setAutosaveIndicator] = useState(false);
   const barcodeScanInputRef = useRef(null);
+  const latestPayloadRef = useRef(null);
+  const saveRef = useRef(null);
 
-  const getTodayDateStr = () => {
-    const now = new Date();
-    const offset = now.getTimezoneOffset();
-    const localNow = new Date(now.getTime() - (offset * 60 * 1000));
-    return localNow.toISOString().split('T')[0];
+  const shopState = shopConfig.state || DEFAULT_STATE;
+
+  const applyCustomerAndMeta = (src) => {
+    setCustomerName(src.customerName === 'Walk-in Customer' ? '' : (src.customerName || ''));
+    setCustomerAddress(src.customerAddress || '');
+    setCustomerMobile(src.customerMobile || '');
+    setCustomerGstin(src.customerGstin || '');
+    setCustomerState(src.customerState || shopState);
+    setPaymentMode(src.paymentMode || 'Cash');
+    setSalesperson(src.salesperson || '');
+    setNotes(src.notes || '');
+
+    setDeliveryNote(src.deliveryNote || '');
+    setRefNo(src.refNo || '');
+    setOrderNo(src.orderNo || '');
+    setDispatchThrough(src.dispatchThrough || '');
+    setDestination(src.destination || '');
+    setTermsDelivery(src.termsDelivery || '');
+
+    setFreight(src.freight > 0 ? String(src.freight) : '');
+    setFreightGst(String(src.freightGst ?? 18));
+    setExtraDiscount(src.extraDiscount > 0 ? String(src.extraDiscount) : '');
+    setRows(mapItemsToRows(src.items));
   };
 
-  const getCurrentTimeStr = () => {
-    const now = new Date();
-    return now.toTimeString().split(' ')[0].substring(0, 5);
+  const resetForm = (config) => {
+    applyCustomerAndMeta({ customerState: config.state || DEFAULT_STATE });
+    setAmountReceived('');
+    setDate(getTodayDateStr());
+    setTime(getCurrentTimeStr());
   };
 
   // --- INITIALIZE & DEFAULTS ---
   useEffect(() => {
     async function initPage() {
       try {
-        const config = await dbInstance.getSettings();
+        const config = await syncService.getSettings();
         setShopConfig(config);
 
-        const prods = await dbInstance.getProducts();
+        const [prods, invoices] = await Promise.all([syncService.getProducts(), syncService.getInvoices()]);
         setProductSuggestions(prods);
+        setPastInvoices(invoices);
 
         if (editingInvoice) {
-          // Load editing invoice details
+          applyCustomerAndMeta(editingInvoice);
           setInvoiceNumber(editingInvoice.invoiceNumber);
           setDate(editingInvoice.date);
           setTime(editingInvoice.time);
-          setCustomerName(editingInvoice.customerName);
-          setCustomerAddress(editingInvoice.customerAddress || '');
-          setCustomerMobile(editingInvoice.customerMobile || '');
-          setCustomerGstin(editingInvoice.customerGstin || '');
-          setCustomerState(editingInvoice.customerState || 'Uttar Pradesh');
-          setPaymentMode(editingInvoice.paymentMode || 'Cash');
-          setSalesperson(editingInvoice.salesperson || '');
+          const paid = getAmountPaid(editingInvoice);
+          setAmountReceived(paid === editingInvoice.grandTotal && editingInvoice.paymentMode !== 'Credit' ? '' : String(paid));
+          return;
+        }
 
-          setDeliveryNote(editingInvoice.deliveryNote || '');
-          setRefNo(editingInvoice.refNo || '');
-          setOrderNo(editingInvoice.orderNo || '');
-          setDispatchThrough(editingInvoice.dispatchThrough || '');
-          setDestination(editingInvoice.destination || '');
-          setTermsDelivery(editingInvoice.termsDelivery || '');
+        resetForm(config);
+        setInvoiceNumber(await syncService.getNextInvoiceNumber(config));
 
-          setFreight(editingInvoice.freight > 0 ? String(editingInvoice.freight) : '');
-          setFreightGst(String(editingInvoice.freightGst || 18));
-          setExtraDiscount(editingInvoice.extraDiscount > 0 ? String(editingInvoice.extraDiscount) : '');
+        if (prefill) {
+          applyCustomerAndMeta({ ...prefill, customerState: prefill.customerState || config.state });
+          onPrefillConsumed?.();
+          window.Toast.info(prefill.invoiceNumber ? `Copied from invoice ${prefill.invoiceNumber}` : `New bill for ${prefill.customerName}`);
+          return;
+        }
 
-          // Map items
-          const mappedRows = editingInvoice.items.map(item => ({
-            id: Math.random(),
-            barcode: item.barcode || '',
-            name: item.name,
-            hsn: item.hsn || '',
-            qty: item.qty,
-            unit: item.unit || 'PCS',
-            rate: item.rate,
-            discount: item.discount || 0,
-            discountType: item.discountType || 'percent',
-            gst: item.gst || 18,
-            taxableAmount: item.taxableAmount || 0,
-            cgst: item.cgst || 0,
-            sgst: item.sgst || 0,
-            total: item.total || 0
-          }));
-          setRows(mappedRows);
-        } else {
-          // Load new invoice defaults
-          setDate(getTodayDateStr());
-          setTime(getCurrentTimeStr());
-          setCustomerState('Uttar Pradesh');
-          setPaymentMode('Cash');
-          setSalesperson('');
-          setFreight('');
-          setFreightGst('18');
-          setExtraDiscount('');
-          setCustomerName('');
-          setCustomerAddress('');
-          setCustomerMobile('');
-          setCustomerGstin('');
-          
-          setDeliveryNote('');
-          setRefNo('');
-          setOrderNo('');
-          setDispatchThrough('');
-          setDestination('');
-          setTermsDelivery('');
-
-          setRows([
-            { id: Date.now(), barcode: '', name: '', hsn: '', qty: 1, unit: 'PCS', rate: 0, discount: 0, discountType: 'percent', gst: 18, taxableAmount: 0, cgst: 0, sgst: 0, total: 0 }
-          ]);
-
-          // Fetch next serial
-          const allInvoices = await dbInstance.getInvoices();
-          const prefix = config.invoicePrefix || '';
-          const startNum = config.invoiceStartNumber || 1001;
-          const nextNum = startNum + allInvoices.length;
-          setInvoiceNumber(`${prefix}${nextNum}`);
-
-          // Draft Recovery Check
-          const draftStr = localStorage.getItem('billing_draft');
-          if (draftStr) {
-            try {
-              const draft = JSON.parse(draftStr);
-              const restore = await window.Dialog.confirm('An unsaved billing draft was found. Do you want to restore it?', 'Draft Recovery');
-              if (restore) {
-                setCustomerName(draft.customerName || '');
-                setCustomerAddress(draft.customerAddress || '');
-                setCustomerMobile(draft.customerMobile || '');
-                setCustomerGstin(draft.customerGstin || '');
-                setCustomerState(draft.customerState || 'Uttar Pradesh');
-                setPaymentMode(draft.paymentMode || 'Cash');
-                setSalesperson(draft.salesperson || '');
-
-                setDeliveryNote(draft.deliveryNote || '');
-                setRefNo(draft.refNo || '');
-                setOrderNo(draft.orderNo || '');
-                setDispatchThrough(draft.dispatchThrough || '');
-                setDestination(draft.destination || '');
-                setTermsDelivery(draft.termsDelivery || '');
-
-                setFreight(draft.freight > 0 ? String(draft.freight) : '');
-                setFreightGst(String(draft.freightGst || 18));
-                setExtraDiscount(draft.extraDiscount > 0 ? String(draft.extraDiscount) : '');
-
-                const mappedDraftRows = draft.items.map(item => ({
-                  id: Math.random(),
-                  barcode: item.barcode || '',
-                  name: item.name,
-                  hsn: item.hsn || '',
-                  qty: item.qty,
-                  unit: item.unit || 'PCS',
-                  rate: item.rate,
-                  discount: item.discount || 0,
-                  discountType: item.discountType || 'percent',
-                  gst: item.gst || 18,
-                  taxableAmount: item.taxableAmount || 0,
-                  cgst: item.cgst || 0,
-                  sgst: item.sgst || 0,
-                  total: item.total || 0
-                }));
-                setRows(mappedDraftRows);
-                window.Toast.success('Draft invoice restored.');
-              } else {
-                localStorage.removeItem('billing_draft');
-              }
-            } catch (e) {
-              console.warn('Draft restore parse error:', e);
+        // Draft Recovery Check
+        const draftStr = localStorage.getItem('billing_draft');
+        if (draftStr) {
+          try {
+            const draft = JSON.parse(draftStr);
+            const restore = await window.Dialog.confirm('An unsaved billing draft was found. Do you want to restore it?', 'Draft Recovery');
+            if (restore) {
+              applyCustomerAndMeta(draft);
+              window.Toast.success('Draft invoice restored.');
+            } else {
+              localStorage.removeItem('billing_draft');
             }
+          } catch (e) {
+            console.warn('Draft restore parse error:', e);
           }
         }
       } catch (err) {
         console.error('Failed to initialize billing desk:', err);
+        window.Toast.error('Failed to load billing data.');
       }
     }
     initPage();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingInvoice]);
 
-  // --- DRAFT AUTOSAVE TIMER ---
+  // --- DRAFT AUTOSAVE TIMER (reads the latest form state through a ref) ---
   useEffect(() => {
     if (editingInvoice) return; // Don't autosave while editing history entries
 
     const timer = setInterval(() => {
-      const payload = collectInvoiceData();
-      const hasData = payload.customerName || payload.customerMobile || (payload.items.length > 0 && payload.items[0].name);
+      const payload = latestPayloadRef.current;
+      if (!payload) return;
+      const hasData = payload.customerMobile || payload.items.length > 0 || (payload.customerName && payload.customerName !== 'Walk-in Customer');
       if (hasData) {
-        localStorage.setItem('billing_draft', JSON.stringify(payload));
+        const { shopConfig: _omit, ...draft } = payload;
+        localStorage.setItem('billing_draft', JSON.stringify(draft));
         setAutosaveIndicator(true);
         setTimeout(() => setAutosaveIndicator(false), 800);
       }
     }, 5000);
 
     return () => clearInterval(timer);
-  }, [customerName, customerMobile, customerAddress, customerGstin, customerState, paymentMode, salesperson, rows, freight, freightGst, extraDiscount]);
+  }, [editingInvoice]);
 
-  // --- ROW CALCULATOR INTERNAL UTILITY ---
-  const recalculateRowFields = (qty, rate, discount, discountType, gst) => {
-    const base = qty * rate;
-    const disc = discountType === 'percent' ? (base * (discount / 100)) : discount;
-    const taxable = Math.max(0, base - disc);
-    const gstAmt = taxable * (gst / 100);
-    const split = gstAmt / 2;
-    const total = taxable + gstAmt;
-
-    return {
-      taxableAmount: taxable,
-      cgst: split,
-      sgst: split,
-      total
+  // --- KEYBOARD SHORTCUTS: Ctrl+S save, Alt+N new row, F2 focus scanner ---
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        saveRef.current?.();
+      } else if (e.altKey && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        setRows(prev => [...prev, createEmptyRow()]);
+      } else if (e.key === 'F2') {
+        e.preventDefault();
+        barcodeScanInputRef.current?.focus();
+      }
     };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // --- CUSTOMER LOOKUP FROM PAST INVOICES ---
+  const knownCustomers = (() => {
+    const map = new Map();
+    pastInvoices.forEach(inv => {
+      if (!inv.customerName || inv.customerName === 'Walk-in Customer') return;
+      const key = inv.customerMobile || inv.customerName.toLowerCase();
+      if (!map.has(key)) map.set(key, inv); // invoices are newest-first
+    });
+    return [...map.values()];
+  })();
+
+  const fillCustomerFrom = (inv) => {
+    setCustomerName(inv.customerName || '');
+    setCustomerMobile(inv.customerMobile || '');
+    setCustomerAddress(inv.customerAddress || '');
+    setCustomerGstin(inv.customerGstin || '');
+    setCustomerState(inv.customerState || shopState);
+  };
+
+  const handleMobileChange = (value) => {
+    const digits = value.replace(/[^\d+]/g, '');
+    setCustomerMobile(digits);
+    if (digits.length >= 10 && !customerName) {
+      const match = knownCustomers.find(c => c.customerMobile === digits);
+      if (match) {
+        fillCustomerFrom(match);
+        window.Toast.info(`Returning customer: ${match.customerName}`);
+      }
+    }
+  };
+
+  const handleNameChange = (value) => {
+    setCustomerName(value);
+    const match = knownCustomers.find(c => c.customerName === value);
+    if (match && !customerMobile) fillCustomerFrom(match);
   };
 
   // --- ROW HANDLERS ---
   const updateRow = (id, fields) => {
-    const updated = rows.map(row => {
-      if (row.id === id) {
-        const merged = { ...row, ...fields };
-        const calculated = recalculateRowFields(
-          parseFloat(merged.qty) || 0,
-          parseFloat(merged.rate) || 0,
-          parseFloat(merged.discount) || 0,
-          merged.discountType,
-          parseFloat(merged.gst) || 0
-        );
-        return { ...merged, ...calculated };
-      }
-      return row;
-    });
-    setRows(updated);
+    setRows(prev => prev.map(row => {
+      if (row.id !== id) return row;
+      const merged = { ...row, ...fields };
+      const calculated = recalculateRowFields(
+        toNumber(merged.qty),
+        toNumber(merged.rate),
+        toNumber(merged.discount),
+        merged.discountType,
+        toNumber(merged.gst)
+      );
+      return { ...merged, ...calculated };
+    }));
+  };
+
+  const productToRowFields = (product, qty = 1) => {
+    const fields = {
+      barcode: product.barcode || '',
+      name: product.name,
+      hsn: product.hsn || '',
+      rate: product.rate || 0,
+      unit: product.unit || 'PCS',
+      discount: product.discount || 0,
+      discountType: 'percent', // product master default is percentage
+      gst: product.gst ?? 18,
+      qty
+    };
+    return { ...fields, ...recalculateRowFields(qty, fields.rate, fields.discount, 'percent', fields.gst) };
   };
 
   const handleRowSelectProduct = (id, product) => {
-    const updated = rows.map(row => {
-      if (row.id === id) {
-        const merged = {
-          ...row,
-          barcode: product.barcode || '',
-          name: product.name,
-          hsn: product.hsn || '',
-          rate: product.rate || 0,
-          unit: product.unit || 'PCS',
-          discount: product.discount || 0,
-          discountType: 'percent', // product master default is percentage
-          gst: product.gst || 18,
-          qty: 1
-        };
-        const calculated = recalculateRowFields(1, merged.rate, merged.discount, 'percent', merged.gst);
-        return { ...merged, ...calculated };
-      }
-      return row;
-    });
-    setRows(updated);
-  };
-
-  const addNewRow = () => {
-    setRows([
-      ...rows,
-      { id: Date.now(), barcode: '', name: '', hsn: '', qty: 1, unit: 'PCS', rate: 0, discount: 0, discountType: 'percent', gst: 18, taxableAmount: 0, cgst: 0, sgst: 0, total: 0 }
-    ]);
-  };
-
-  const deleteRow = (id) => {
-    if (rows.length === 1) {
-      setRows([
-        { id: Date.now(), barcode: '', name: '', hsn: '', qty: 1, unit: 'PCS', rate: 0, discount: 0, discountType: 'percent', gst: 18, taxableAmount: 0, cgst: 0, sgst: 0, total: 0 }
-      ]);
-    } else {
-      setRows(rows.filter(row => row.id !== id));
+    setRows(prev => prev.map(row => (row.id === id ? { ...row, ...productToRowFields(product) } : row)));
+    if (product.stock !== undefined && product.stock <= 0) {
+      window.Toast.warn(`"${product.name}" is out of stock (${product.stock}).`);
     }
   };
 
-  // --- BARCODE SCANNER INTEGRATION ---
-  const handleBarcodeScan = async (e) => {
-    if (e.key === 'Enter') {
-      const barcode = e.target.value.trim();
-      if (!barcode) return;
-      e.target.value = ''; // Reset scanner input immediately
+  const addNewRow = () => {
+    setRows(prev => [...prev, createEmptyRow()]);
+  };
 
-      try {
-        const product = await dbInstance.getProductByBarcode(barcode);
-        if (product) {
-          // Check if barcode is already present in any of our rows
-          const index = rows.findIndex(row => row.barcode.trim() === barcode);
-          if (index !== -1) {
-            // Increment quantity of existing row
-            const targetRow = rows[index];
-            const nextQty = targetRow.qty + 1;
-            const calculated = recalculateRowFields(nextQty, targetRow.rate, targetRow.discount, targetRow.discountType, targetRow.gst);
-            const updatedRows = [...rows];
-            updatedRows[index] = { ...targetRow, qty: nextQty, ...calculated };
-            setRows(updatedRows);
-            window.Toast.success(`Incremented quantity for "${product.name}"`);
-          } else {
-            // Check if there is a blank row to use
-            const blankIndex = rows.findIndex(row => !row.name.trim() && !row.barcode.trim() && row.rate === 0);
-            const updatedRows = [...rows];
-            const newRowPayload = {
-              barcode: product.barcode || '',
-              name: product.name,
-              hsn: product.hsn || '',
-              rate: product.rate || 0,
-              unit: product.unit || 'PCS',
-              discount: product.discount || 0,
-              discountType: 'percent',
-              gst: product.gst || 18,
-              qty: 1
-            };
-            const calculated = recalculateRowFields(1, newRowPayload.rate, newRowPayload.discount, 'percent', newRowPayload.gst);
-            
-            if (blankIndex !== -1) {
-              updatedRows[blankIndex] = { ...updatedRows[blankIndex], ...newRowPayload, ...calculated };
-            } else {
-              updatedRows.push({ id: Date.now(), ...newRowPayload, ...calculated });
-            }
-            setRows(updatedRows);
-            window.Toast.success(`Added "${product.name}" via scan`);
-          }
-        } else {
-          window.Toast.warn('No product registered with this barcode scan.');
-        }
-      } catch (err) {
-        console.error('Barcode lookup failed:', err);
+  const deleteRow = (id) => {
+    setRows(prev => (prev.length === 1 ? [createEmptyRow()] : prev.filter(row => row.id !== id)));
+  };
+
+  // --- BARCODE SCANNER INTEGRATION ---
+  const addScannedProduct = (product) => {
+    setRows(prev => {
+      const index = prev.findIndex(row => row.barcode.trim() === product.barcode);
+      const updated = [...prev];
+      if (index !== -1) {
+        const target = prev[index];
+        const nextQty = toNumber(target.qty) + 1;
+        updated[index] = { ...target, qty: nextQty, ...recalculateRowFields(nextQty, toNumber(target.rate), toNumber(target.discount), target.discountType, toNumber(target.gst)) };
+        return updated;
       }
+      const blankIndex = prev.findIndex(row => !row.name.trim() && !row.barcode.trim() && !row.rate);
+      if (blankIndex !== -1) {
+        updated[blankIndex] = { ...updated[blankIndex], ...productToRowFields(product) };
+      } else {
+        updated.push({ ...createEmptyRow(), ...productToRowFields(product) });
+      }
+      return updated;
+    });
+  };
+
+  const handleBarcodeScan = async (e) => {
+    if (e.key !== 'Enter') return;
+    const barcode = e.target.value.trim();
+    if (!barcode) return;
+    e.target.value = ''; // Reset scanner input immediately
+
+    try {
+      const product = await syncService.getProductByBarcode(barcode);
+      if (product) {
+        addScannedProduct(product);
+        window.Toast.success(`Added "${product.name}"`);
+      } else {
+        window.Toast.warn(`No product registered with barcode "${barcode}".`);
+      }
+    } catch (err) {
+      console.error('Barcode lookup failed:', err);
+      window.Toast.error('Barcode lookup failed.');
     }
   };
 
   const handleRowBarcodeEnter = async (id, barcodeVal) => {
     if (!barcodeVal.trim()) return;
     try {
-      const match = await dbInstance.getProductByBarcode(barcodeVal);
+      const match = await syncService.getProductByBarcode(barcodeVal);
       if (match) {
         handleRowSelectProduct(id, match);
         window.Toast.success(`Imported "${match.name}"`);
@@ -365,24 +364,22 @@ export default function Billing({ editingInvoice, onInvoiceSaved, setActivePage 
     let discountSum = 0;
     let cgstSum = 0;
     let sgstSum = 0;
-    let grossSum = 0;
 
     rows.forEach(row => {
       subtotalSum += row.taxableAmount;
-      const base = (parseFloat(row.qty) || 0) * (parseFloat(row.rate) || 0);
-      const disc = row.discountType === 'percent' ? (base * (row.discount / 100)) : row.discount;
+      const base = toNumber(row.qty) * toNumber(row.rate);
+      const disc = row.discountType === 'percent' ? (base * (toNumber(row.discount) / 100)) : toNumber(row.discount);
       discountSum += disc;
       cgstSum += row.cgst;
       sgstSum += row.sgst;
-      grossSum += row.total;
     });
 
-    const fr = parseFloat(freight) || 0;
-    const frGst = parseFloat(freightGst) || 18;
+    const fr = toNumber(freight);
+    const frGst = toNumber(freightGst, 18);
     const frTax = fr * (frGst / 100);
-    const extraDisc = parseFloat(extraDiscount) || 0;
+    const extraDisc = toNumber(extraDiscount);
 
-    const isLocal = customerState === 'Uttar Pradesh';
+    const isLocal = customerState === shopState;
     let finalCgst = 0;
     let finalSgst = 0;
     let finalIgst = 0;
@@ -397,7 +394,7 @@ export default function Billing({ editingInvoice, onInvoiceSaved, setActivePage 
     const netTaxable = subtotalSum + fr;
     const netTax = isLocal ? (finalCgst + finalSgst) : finalIgst;
     const netGross = netTaxable + netTax - extraDisc;
-    const grandTotal = Math.round(netGross);
+    const grandTotal = Math.max(0, Math.round(netGross));
     const roundOff = grandTotal - netGross;
 
     return {
@@ -414,6 +411,10 @@ export default function Billing({ editingInvoice, onInvoiceSaved, setActivePage 
   };
 
   const totals = calculateTotals();
+  const amountPaid = amountReceived === ''
+    ? (paymentMode === 'Credit' ? 0 : totals.grandTotal)
+    : Math.min(totals.grandTotal, Math.max(0, toNumber(amountReceived)));
+  const balanceDue = Math.max(0, totals.grandTotal - amountPaid);
 
   // --- SERIALIZATION FOR SAVING ---
   const collectInvoiceData = () => {
@@ -423,12 +424,12 @@ export default function Billing({ editingInvoice, onInvoiceSaved, setActivePage 
         name: row.name.trim(),
         barcode: row.barcode.trim(),
         hsn: row.hsn.trim(),
-        qty: parseFloat(row.qty) || 0,
+        qty: toNumber(row.qty),
         unit: row.unit.trim(),
-        rate: parseFloat(row.rate) || 0,
-        discount: parseFloat(row.discount) || 0,
+        rate: toNumber(row.rate),
+        discount: toNumber(row.discount),
         discountType: row.discountType,
-        gst: parseFloat(row.gst) || 0,
+        gst: toNumber(row.gst),
         taxableAmount: row.taxableAmount,
         cgst: row.cgst,
         sgst: row.sgst,
@@ -442,10 +443,11 @@ export default function Billing({ editingInvoice, onInvoiceSaved, setActivePage 
       customerName: customerName.trim() || 'Walk-in Customer',
       customerAddress: customerAddress.trim(),
       customerMobile: customerMobile.trim(),
-      customerGstin: customerGstin.trim(),
+      customerGstin: customerGstin.trim().toUpperCase(),
       customerState,
       paymentMode,
       salesperson: salesperson.trim(),
+      notes: notes.trim(),
 
       deliveryNote: deliveryNote.trim(),
       refNo: refNo.trim(),
@@ -454,9 +456,9 @@ export default function Billing({ editingInvoice, onInvoiceSaved, setActivePage 
       destination: destination.trim(),
       termsDelivery: termsDelivery.trim(),
 
-      freight: parseFloat(freight) || 0,
-      freightGst: parseFloat(freightGst) || 18,
-      extraDiscount: parseFloat(extraDiscount) || 0,
+      freight: toNumber(freight),
+      freightGst: toNumber(freightGst, 18),
+      extraDiscount: toNumber(extraDiscount),
 
       items,
       subtotal: totals.subtotal,
@@ -466,6 +468,7 @@ export default function Billing({ editingInvoice, onInvoiceSaved, setActivePage 
       igstTotal: totals.igstTotal,
       roundOff: totals.roundOff,
       grandTotal: totals.grandTotal,
+      amountPaid,
       isLocal: totals.isLocal,
       amountInWords: totals.amountInWords,
       termsAndConditions: shopConfig.terms || '',
@@ -473,68 +476,90 @@ export default function Billing({ editingInvoice, onInvoiceSaved, setActivePage 
     };
   };
 
+  latestPayloadRef.current = collectInvoiceData();
+
+  const validateInvoice = (payload) => {
+    if (payload.items.length === 0) return 'Please enter at least one item description to save.';
+    if (payload.items.some(item => item.qty <= 0)) return 'Every item must have a quantity greater than zero.';
+    if (payload.items.some(item => item.rate < 0)) return 'Item rates cannot be negative.';
+    if (!payload.date) return 'Please select an invoice date.';
+    if (payload.customerMobile && !/^(\+91)?[6-9]\d{9}$/.test(payload.customerMobile)) return 'Customer mobile must be a valid 10-digit Indian number.';
+    if (payload.customerGstin && !/^\d{2}[A-Z]{5}\d{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(payload.customerGstin)) return 'Customer GSTIN looks invalid (15 characters, e.g. 09ABCDE1234F1Z5).';
+    if (payload.paymentMode === 'Credit' && payload.customerName === 'Walk-in Customer') return 'Credit bills need a customer name so the dues can be tracked.';
+    return null;
+  };
+
   const handleSaveInvoice = async () => {
+    if (saving) return;
     const payload = collectInvoiceData();
 
-    if (payload.items.length === 0) {
-      window.Toast.error('Please enter at least one item description to save.');
+    const error = validateInvoice(payload);
+    if (error) {
+      window.Toast.error(error);
       return;
     }
 
+    // Stock check (warn, but allow billing)
+    const shortages = payload.items.filter(item => {
+      const product = productSuggestions.find(p => (item.barcode && p.barcode === item.barcode) || p.name.toLowerCase() === item.name.toLowerCase());
+      if (!product) return false;
+      const alreadyBilled = editingInvoice ? (editingInvoice.items.find(i => i.name === item.name)?.qty || 0) : 0;
+      return item.qty > (product.stock || 0) + alreadyBilled;
+    });
+    if (shortages.length > 0) {
+      const proceed = await window.Dialog.confirm(
+        `Low stock for: ${shortages.map(s => s.name).join(', ')}. Save the invoice anyway? Stock will go negative.`,
+        'Insufficient Stock'
+      );
+      if (!proceed) return;
+    }
+
+    setSaving(true);
     try {
       if (editingInvoice) {
         payload.id = editingInvoice.id;
+        payload.createdBy = editingInvoice.createdBy || '';
+        const previousPaid = getAmountPaid(editingInvoice);
+        payload.payments = editingInvoice.payments?.length
+          ? editingInvoice.payments
+          : (previousPaid > 0 ? [{ date: editingInvoice.date, amount: previousPaid, mode: editingInvoice.paymentMode }] : []);
+        if (payload.amountPaid !== previousPaid) {
+          payload.payments = [...payload.payments, { date: getTodayDateStr(), amount: payload.amountPaid - previousPaid, mode: payload.paymentMode, note: 'Adjusted on edit' }];
+        }
+      } else {
+        // Guard against a number taken in another tab since the page loaded
+        const latest = await syncService.getInvoices();
+        if (latest.some(inv => inv.invoiceNumber === payload.invoiceNumber)) {
+          payload.invoiceNumber = await syncService.getNextInvoiceNumber(shopConfig);
+          setInvoiceNumber(payload.invoiceNumber);
+        }
+        payload.createdBy = user?.name || '';
+        payload.payments = payload.amountPaid > 0 ? [{ date: payload.date, amount: payload.amountPaid, mode: payload.paymentMode }] : [];
       }
-      await dbInstance.saveInvoice(payload);
-      window.Toast.success(editingInvoice ? 'Invoice updated successfully.' : 'Invoice saved successfully.');
+
+      const saved = await syncService.saveInvoice(payload, { previousItems: editingInvoice ? editingInvoice.items : [] });
+      window.Toast.success(editingInvoice ? 'Invoice updated successfully.' : `Invoice ${saved.invoiceNumber} saved.`);
       localStorage.removeItem('billing_draft');
-      
-      if (onInvoiceSaved) {
-        onInvoiceSaved(payload);
-      }
+      onInvoiceSaved?.(saved);
     } catch (err) {
       console.error('Invoice saving failed:', err);
-      window.Toast.error('Failed to save invoice records to IndexedDB.');
+      window.Toast.error(`Failed to save invoice: ${err.message || 'storage error'}`);
+    } finally {
+      setSaving(false);
     }
   };
 
+  saveRef.current = handleSaveInvoice;
+
   const handleClearInvoice = async () => {
     const confirm = await window.Dialog.confirm('Are you sure you want to discard all current entries and reset this invoice form?', 'Reset Desk');
-    if (confirm) {
-      setCustomerName('');
-      setCustomerAddress('');
-      setCustomerMobile('');
-      setCustomerGstin('');
-      setCustomerState('Uttar Pradesh');
-      setPaymentMode('Cash');
-      setSalesperson('');
-
-      setDeliveryNote('');
-      setRefNo('');
-      setOrderNo('');
-      setDispatchThrough('');
-      setDestination('');
-      setTermsDelivery('');
-
-      setFreight('');
-      setFreightGst('18');
-      setExtraDiscount('');
-
-      setRows([
-        { id: Date.now(), barcode: '', name: '', hsn: '', qty: 1, unit: 'PCS', rate: 0, discount: 0, discountType: 'percent', gst: 18, taxableAmount: 0, cgst: 0, sgst: 0, total: 0 }
-      ]);
-
-      // Re-trigger defaults reload for number
-      if (!editingInvoice) {
-        const allInvoices = await dbInstance.getInvoices();
-        const prefix = shopConfig.invoicePrefix || '';
-        const startNum = shopConfig.invoiceStartNumber || 1001;
-        const nextNum = startNum + allInvoices.length;
-        setInvoiceNumber(`${prefix}${nextNum}`);
-      }
-      localStorage.removeItem('billing_draft');
-      window.Toast.success('Form cleared.');
+    if (!confirm) return;
+    resetForm(shopConfig);
+    if (!editingInvoice) {
+      setInvoiceNumber(await syncService.getNextInvoiceNumber(shopConfig));
     }
+    localStorage.removeItem('billing_draft');
+    window.Toast.success('Form cleared.');
   };
 
   return (
@@ -552,7 +577,7 @@ export default function Billing({ editingInvoice, onInvoiceSaved, setActivePage 
           style={{ width: '220px', padding: '6px 12px', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)' }}
         />
         <div className="scan-pulse-indicator"></div>
-        <span style={{ fontSize: '11px', color: 'var(--text-light)', fontWeight: '500' }}>Laser scanner listening...</span>
+        <span style={{ fontSize: '11px', color: 'var(--text-light)', fontWeight: '500' }}>F2 scan · Alt+N new row · Ctrl+S save</span>
         
         {autosaveIndicator && (
           <div className="draft-autosave-status" style={{ marginLeft: 'auto', opacity: 1, transition: 'opacity 0.5s' }}>
@@ -563,7 +588,9 @@ export default function Billing({ editingInvoice, onInvoiceSaved, setActivePage 
 
       {/* Meta Grid Form */}
       <div className="card" style={{ padding: '24px' }}>
-        <h3 style={{ margin: '0 0 16px 0', fontSize: '14px', fontWeight: '700', borderBottom: '1px dashed var(--border-color)', paddingBottom: '8px' }}>👤 Customer & Invoice Parameters</h3>
+        <h3 style={{ margin: '0 0 16px 0', fontSize: '14px', fontWeight: '700', borderBottom: '1px dashed var(--border-color)', paddingBottom: '8px' }}>
+          👤 Customer & Invoice Parameters {editingInvoice && <span className="editing-badge">Editing {editingInvoice.invoiceNumber}</span>}
+        </h3>
         <div className="billing-meta-grid">
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-light)' }}>Invoice Number</label>
@@ -580,11 +607,11 @@ export default function Billing({ editingInvoice, onInvoiceSaved, setActivePage 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-light)' }}>Supply State (Place of Supply) *</label>
             <select className="form-control" value={customerState} onChange={(e) => setCustomerState(e.target.value)} style={{ padding: '8px', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', backgroundColor: 'var(--bg-input)' }}>
-              <option value="Uttar Pradesh">Uttar Pradesh (Local CGST/SGST)</option>
-              <option value="Madhya Pradesh">Madhya Pradesh (Interstate IGST)</option>
-              <option value="Delhi">Delhi (IGST)</option>
-              <option value="Haryana">Haryana (IGST)</option>
-              <option value="Rajasthan">Rajasthan (IGST)</option>
+              {INDIAN_STATES.map(s => (
+                <option key={s.code} value={s.name}>
+                  {s.name} ({s.code}) {s.name === shopState ? '- Local CGST/SGST' : '- IGST'}
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -592,11 +619,16 @@ export default function Billing({ editingInvoice, onInvoiceSaved, setActivePage 
         <div className="billing-meta-grid" style={{ marginTop: '16px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-light)' }}>Customer Mobile (Optional)</label>
-            <input type="text" className="form-control" placeholder="10-digit number" value={customerMobile} onChange={(e) => setCustomerMobile(e.target.value)} />
+            <input type="tel" className="form-control" placeholder="10-digit number" value={customerMobile} onChange={(e) => handleMobileChange(e.target.value)} maxLength={13} />
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-light)' }}>Customer Name *</label>
-            <input type="text" className="form-control" placeholder="Walk-in Customer" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
+            <input type="text" className="form-control" placeholder="Walk-in Customer" value={customerName} onChange={(e) => handleNameChange(e.target.value)} list="known-customers" />
+            <datalist id="known-customers">
+              {knownCustomers.map(c => (
+                <option key={c.customerMobile || c.customerName} value={c.customerName}>{c.customerMobile}</option>
+              ))}
+            </datalist>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-light)' }}>Customer Address (Street/City)</label>
@@ -605,7 +637,7 @@ export default function Billing({ editingInvoice, onInvoiceSaved, setActivePage 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
               <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-light)' }}>GSTIN</label>
-              <input type="text" className="form-control" placeholder="15-char ID" value={customerGstin} onChange={(e) => setCustomerGstin(e.target.value)} />
+              <input type="text" className="form-control" placeholder="15-char ID" value={customerGstin} onChange={(e) => setCustomerGstin(e.target.value.toUpperCase())} maxLength={15} />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
               <label style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-light)' }}>Pay Mode</label>
@@ -653,6 +685,10 @@ export default function Billing({ editingInvoice, onInvoiceSaved, setActivePage 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
               <label style={{ fontSize: '10px', color: 'var(--text-light)' }}>Salesperson Name</label>
               <input type="text" className="form-control" value={salesperson} onChange={(e) => setSalesperson(e.target.value)} />
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              <label style={{ fontSize: '10px', color: 'var(--text-light)' }}>Internal Remarks (not printed)</label>
+              <input type="text" className="form-control" value={notes} onChange={(e) => setNotes(e.target.value)} />
             </div>
           </div>
         </details>
@@ -708,20 +744,20 @@ export default function Billing({ editingInvoice, onInvoiceSaved, setActivePage 
                   <input type="text" className="row-hsn" value={row.hsn} onChange={(e) => updateRow(row.id, { hsn: e.target.value })} placeholder="HSN" />
                 </td>
                 <td className="col-qty">
-                  <input type="number" className="row-qty" value={row.qty} onChange={(e) => updateRow(row.id, { qty: parseFloat(e.target.value) || 0 })} placeholder="1" min="0" step="any" />
+                  <input type="number" className="row-qty" value={row.qty} onChange={(e) => updateRow(row.id, { qty: e.target.value })} placeholder="1" min="0" step="any" />
                 </td>
                 <td className="col-unit">
                   <input type="text" className="row-unit" value={row.unit} onChange={(e) => updateRow(row.id, { unit: e.target.value })} placeholder="PCS" />
                 </td>
                 <td className="col-rate">
-                  <input type="number" className="row-rate" value={row.rate || ''} onChange={(e) => updateRow(row.id, { rate: parseFloat(e.target.value) || 0 })} placeholder="0.00" min="0" step="any" />
+                  <input type="number" className="row-rate" value={row.rate || ''} onChange={(e) => updateRow(row.id, { rate: e.target.value })} placeholder="0.00" min="0" step="any" />
                 </td>
                 <td className="col-discount" style={{ display: 'flex', gap: '2px', alignItems: 'center', justifyContent: 'center', height: '100%', border: 'none', padding: '6px 4px' }}>
                   <input
                     type="number"
                     className="row-discount"
                     value={row.discount || ''}
-                    onChange={(e) => updateRow(row.id, { discount: parseFloat(e.target.value) || 0 })}
+                    onChange={(e) => updateRow(row.id, { discount: e.target.value })}
                     placeholder="0"
                     min="0"
                     step="any"
@@ -738,7 +774,7 @@ export default function Billing({ editingInvoice, onInvoiceSaved, setActivePage 
                   </select>
                 </td>
                 <td className="col-gst">
-                  <input type="number" className="row-gst" value={row.gst} onChange={(e) => updateRow(row.id, { gst: parseFloat(e.target.value) || 0 })} placeholder="18" min="0" max="100" />
+                  <input type="number" className="row-gst" value={row.gst} onChange={(e) => updateRow(row.id, { gst: e.target.value })} placeholder="18" min="0" max="100" />
                 </td>
                 <td className="col-taxable">
                   <input type="text" className="row-taxable-amt" value={row.taxableAmount.toFixed(2)} readOnly style={{ backgroundColor: 'var(--bg-app)' }} />
@@ -753,7 +789,7 @@ export default function Billing({ editingInvoice, onInvoiceSaved, setActivePage 
       </div>
 
       <div style={{ display: 'flex', justifyContent: 'flex-start', marginTop: '12px' }}>
-        <button type="button" className="btn btn-secondary" onClick={addNewRow}>➕ Add Row item</button>
+        <button type="button" className="btn btn-secondary" onClick={addNewRow} title="Alt+N">➕ Add Row item</button>
       </div>
 
       {/* Bottom Layout footer */}
@@ -840,6 +876,25 @@ export default function Billing({ editingInvoice, onInvoiceSaved, setActivePage 
             <span className="val-amount">Rs. {totals.grandTotal.toFixed(2)}</span>
           </div>
 
+          <div className="payment-received-panel">
+            <label>
+              Amount Received (Rs.)
+              <input
+                type="number"
+                className="form-control"
+                min="0"
+                step="any"
+                placeholder={paymentMode === 'Credit' ? '0 (on credit)' : totals.grandTotal.toFixed(2)}
+                value={amountReceived}
+                onChange={(e) => setAmountReceived(e.target.value)}
+              />
+            </label>
+            <div className={`balance-due ${balanceDue > 0 ? 'has-due' : ''}`}>
+              <span>Balance Due</span>
+              <strong>Rs. {balanceDue.toFixed(2)}</strong>
+            </div>
+          </div>
+
           <div className="words-panel" style={{ marginTop: '12px' }}>
             <span>Amount Chargeable (in words)</span>
             {totals.amountInWords}
@@ -848,8 +903,8 @@ export default function Billing({ editingInvoice, onInvoiceSaved, setActivePage 
           {/* Action buttons */}
           <div className="billing-action-buttons">
             <button className="btn btn-secondary" type="button" onClick={handleClearInvoice}>🗑️ Reset Desk</button>
-            <button className="btn btn-primary" type="button" onClick={handleSaveInvoice}>
-              💾 {editingInvoice ? 'Update & Save Invoice' : 'Save & Print Invoice'}
+            <button className="btn btn-primary" type="button" onClick={handleSaveInvoice} disabled={saving} title="Ctrl+S">
+              💾 {saving ? 'Saving…' : editingInvoice ? 'Update & Save Invoice' : 'Save & Print Invoice'}
             </button>
           </div>
         </div>
