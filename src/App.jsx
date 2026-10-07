@@ -22,6 +22,19 @@ import Settings from './pages/Settings';
 export default function App() {
   const [activePage, setActivePage] = useState('dashboard');
   const [ready, setReady] = useState(false);
+  // 'blocked' = another open copy of the app is holding the database; 'slow' = startup is taking too long
+  const [startupIssue, setStartupIssue] = useState(null);
+
+  useEffect(() => {
+    if (ready) return;
+    const onBlocked = () => setStartupIssue('blocked');
+    window.addEventListener('billing-db-blocked', onBlocked);
+    const timer = setTimeout(() => setStartupIssue(prev => prev || 'slow'), 8000);
+    return () => {
+      window.removeEventListener('billing-db-blocked', onBlocked);
+      clearTimeout(timer);
+    };
+  }, [ready]);
   const [user, setUser] = useState(null);
   const [shopConfig, setShopConfig] = useState({});
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
@@ -163,6 +176,22 @@ export default function App() {
       <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh', width: '100%', backgroundColor: 'var(--bg-app)', color: 'var(--text-main)', fontFamily: 'sans-serif' }}>
         <div style={{ fontSize: '18px', fontWeight: 'bold', marginBottom: '8px' }}>VARDHMAN BILLING DESK</div>
         <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Opening storage…</div>
+        {startupIssue && (
+          <div style={{ marginTop: '20px', maxWidth: '420px', padding: '0 16px', textAlign: 'center', fontSize: '13px', lineHeight: 1.5, color: 'var(--text-main)' }}>
+            {startupIssue === 'blocked'
+              ? 'The app is being updated, but an older copy is still open in another tab or app window. Close the other tabs/windows of this app, and this page will continue automatically.'
+              : 'This is taking longer than expected. Close any other tabs or app windows of this billing app, then reload.'}
+            <div>
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                style={{ marginTop: '14px', padding: '8px 18px', borderRadius: '6px', border: 'none', background: 'var(--primary)', color: '#fff', fontWeight: 600, cursor: 'pointer' }}
+              >
+                Reload
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     );
   }

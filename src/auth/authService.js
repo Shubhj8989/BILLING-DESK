@@ -399,7 +399,11 @@ class AuthService {
 
     if (session.mode === 'cloud') {
       if (!supabase) return null;
-      const { data } = await supabase.auth.getSession();
+      // Don't let an unreachable cloud server hold up app startup
+      const { data } = await Promise.race([
+        supabase.auth.getSession(),
+        new Promise(resolve => setTimeout(() => resolve({ data: { session: null } }), 5000))
+      ]);
       if (!data.session) {
         clearSession();
         return null;

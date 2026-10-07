@@ -44,7 +44,20 @@ class AppDB {
 
       request.onsuccess = (event) => {
         this.db = event.target.result;
+        // If a newer version of the app needs to upgrade the database (e.g. in
+        // another tab), let go of it so that upgrade isn't blocked forever.
+        this.db.onversionchange = () => {
+          this.db.close();
+          window.location.reload();
+        };
         resolve(this);
+      };
+
+      // Another tab/window with an older version still has the database open.
+      // The upgrade continues automatically once that copy is closed.
+      request.onblocked = () => {
+        this.blocked = true;
+        window.dispatchEvent(new Event('billing-db-blocked'));
       };
 
       request.onerror = (event) => {
